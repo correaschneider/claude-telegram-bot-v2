@@ -6,19 +6,19 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
-from claude_stream import RunSpec
-from config import Config
-from permissions import PolicyLoader
-from projects import ProjectRegistry
-from store import Conversation, ConversationStore
-from turn import RunningClaude, Turn
+from tgclaude.claude.stream import RunSpec
+from tgclaude.config import Config
+from tgclaude.core.permissions import PolicyLoader
+from tgclaude.core.projects import ProjectRegistry
+from tgclaude.core.store import Conversation, ConversationStore
+from tgclaude.core.turn import RunningClaude, Turn
 
 if TYPE_CHECKING:
     from aiogram import Bot
 
-    from permission_desk import PermissionDesk
-    from questions import QuestionDesk
-    from scheduler import JobScheduler
+    from tgclaude.tools.permission_desk import PermissionDesk
+    from tgclaude.tools.questions import QuestionDesk
+    from tgclaude.tools.scheduler import JobScheduler
 
 
 class ClaudeRunner(Protocol):

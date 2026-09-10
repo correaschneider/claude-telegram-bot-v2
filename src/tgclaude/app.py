@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import logging
 import os
 import sys
@@ -12,23 +13,28 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.types import BotCommand
 from dotenv import load_dotenv
 
-import callbacks
-import group
-import handlers
-from bridge_server import BridgeServer
-from claude_stream import SubprocessRunner
-from config import Config
-from permission_desk import PermissionDesk
-from permissions import PolicyLoader
-from projects import ProjectRegistry
-from questions import QuestionDesk
-from scheduler import JobScheduler, JobStore
-from services import Bridge, RuntimeState, Services
-from store import ConversationStore
-from transcriber import WhisperXTranscriber
+from tgclaude.claude.stream import SubprocessRunner
+from tgclaude.config import Config
+from tgclaude.core.permissions import PolicyLoader
+from tgclaude.core.projects import ProjectRegistry
+from tgclaude.core.store import ConversationStore
+from tgclaude.services import Bridge, RuntimeState, Services
+from tgclaude.telegram import callbacks, group, handlers
+from tgclaude.telegram.transcriber import WhisperXTranscriber
+from tgclaude.tools.permission_desk import PermissionDesk
+from tgclaude.tools.questions import QuestionDesk
+from tgclaude.tools.scheduler import JobScheduler, JobStore
+from tgclaude.tools.server import BridgeServer
 
 log = logging.getLogger("claude-bot")
-HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def bridge_script_path() -> str:
+    """Caminho do mcp_bridge.py sem importá-lo (ele lê TG_* do ambiente ao carregar)."""
+    spec = importlib.util.find_spec("tgclaude.claude.mcp_bridge")
+    assert spec and spec.origin
+    return spec.origin
+
 
 COMMANDS = [
     BotCommand(command="status", description="Projeto, sessão, yolo, regras, agendamentos"),
@@ -48,7 +54,8 @@ COMMANDS = [
 
 
 async def run() -> None:
-    load_dotenv(os.path.join(HERE, ".env"))
+    # .env fica na raiz do repo (= WorkingDirectory do serviço), não dentro do pacote.
+    load_dotenv(os.environ.get("TGCLAUDE_ENV") or os.path.join(os.getcwd(), ".env"))
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
@@ -75,7 +82,7 @@ async def run() -> None:
         bridge=Bridge(
             url=url,
             token=bridge_server.token,
-            script=os.path.join(HERE, "mcp_bridge.py"),
+            script=bridge_script_path(),
             python=sys.executable,
         ),
         desk=PermissionDesk(bot, store, policy, cfg.decisions_file),

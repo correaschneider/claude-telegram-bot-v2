@@ -14,7 +14,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from services import ActiveTurn
+from tgclaude.services import ActiveTurn
 
 log = logging.getLogger("claude-bot")
 

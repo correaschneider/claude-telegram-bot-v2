@@ -16,9 +16,14 @@ from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from aiogram.utils.deep_linking import create_start_link
 
-import audit
-from formatting import format_elapsed
-from media import (
+from tgclaude.claude.runner import is_busy, run_turn
+from tgclaude.claude.sessions_index import list_recent_sessions
+from tgclaude.core import audit
+from tgclaude.core.formatting import format_elapsed
+from tgclaude.core.projects import Project
+from tgclaude.core.store import Conversation
+from tgclaude.services import Services
+from tgclaude.telegram.media import (
     TRANSCRIPT_HEADER,
     build_reply_context,
     download_audio,
@@ -26,13 +31,8 @@ from media import (
     is_image,
     with_reply_context,
 )
-from projects import Project
-from runner import is_busy, run_turn
-from scheduler import describe
-from services import Services
-from sessions_index import list_recent_sessions
-from store import Conversation
-from telegram_sink import TelegramSink
+from tgclaude.telegram.sink import TelegramSink
+from tgclaude.tools.scheduler import describe
 
 log = logging.getLogger("claude-bot")
 router = Router(name="private")

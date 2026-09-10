@@ -14,7 +14,7 @@
   <img alt="aiogram 3.31" src="https://img.shields.io/badge/aiogram-3.31-2CA5E0?logo=telegram&logoColor=white">
   <img alt="Bot API 10.3" src="https://img.shields.io/badge/Telegram%20Bot%20API-10.3-26A5E4?logo=telegram&logoColor=white">
   <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-headless-D97757">
-  <img alt="tests" src="https://img.shields.io/badge/tests-18%20passing-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-19%20passing-brightgreen">
   <img alt="license" src="https://img.shields.io/badge/use-personal-lightgrey">
 </p>
 
@@ -94,7 +94,7 @@ git clone git@github.com:correaschneider/claude-telegram-bot-v2.git && cd claude
 uv sync
 cp .env.example .env                      # TELEGRAM_TOKEN, ALLOWED_CHAT_IDS, WORKSPACE
 cp projects.example.json projects.json    # alias → cwd, allowed_tools, tasks, chats
-uv run bot.py
+uv run tgclaude
 ```
 
 In **@BotFather → Mini App → your bot → Settings**: turn on **Threaded Mode** (topics) and,
@@ -106,46 +106,50 @@ To run it as a service, install WhisperX and troubleshoot: **[INSTALL.en.md](INS
 
 ```mermaid
 flowchart LR
-    TG[("Telegram")] <-- "updates · drafts · rich messages · buttons" --> H["handlers / callbacks / group<br/>(aiogram)"]
-    H --> R["runner.py<br/>assembles the turn"]
-    R --> T["turn.py<br/>buffer · throttle · keepalive · stop"]
-    T -- "DraftSink" --> S["telegram_sink.py"]
+    TG[("Telegram")] <-- "updates · drafts · rich messages · buttons" --> H["telegram/handlers · callbacks · group<br/>(aiogram)"]
+    H --> R["claude/runner.py<br/>assembles the turn"]
+    R --> T["core/turn.py<br/>buffer · throttle · keepalive · stop"]
+    T -- "DraftSink" --> S["telegram/sink.py"]
     S --> TG
     R -- "claude -p --output-format stream-json<br/>--permission-prompt-tool mcp__tg__ask" --> C["Claude Code<br/>(subprocess)"]
     C -- "NDJSON" --> T
-    C -- "MCP stdio" --> B["mcp_bridge.py<br/>(stdlib)"]
-    B -- "HTTP loopback" --> BS["bridge_server.py"]
-    BS --> PD["permission_desk<br/>questions · checklist<br/>delivery · scheduler"]
+    C -- "MCP stdio" --> B["claude/mcp_bridge.py<br/>(stdlib)"]
+    B -- "HTTP loopback" --> BS["tools/server.py"]
+    BS --> PD["tools/permission_desk<br/>questions · checklist<br/>delivery · scheduler"]
     PD --> TG
     H --> W["whisperx_server<br/>(resident model)"]
 ```
 
-Ports & adapters: the core (`turn.py`) only knows `RunningClaude` (events) and
-`DraftSink` (draft/delivery). That's why the 18 tests run without a token, network or GPU —
+Ports & adapters: the core (`core/turn.py`) only knows `RunningClaude` (events) and
+`DraftSink` (draft/delivery). That's why the 19 tests run without a token, network or GPU —
 and the real flows (approve, deny, "always", groups, questions, schedules, files) were
 validated end to end against the real Claude.
 
+Standard Python application layout: installable package in **`src/tgclaude/`** (*src layout*),
+entrypoint declared in `pyproject.toml` (`uv run tgclaude` or `python -m tgclaude`), tests in
+`tests/` with pytest, and non-package files in `deploy/`. Subpackages per layer: `core/` (no
+Telegram, no subprocess), `claude/` (Claude Code side), `tools/` (what the bridge exposes to
+Claude) and `telegram/` (aiogram adapters).
+
 | Module | Responsibility |
 |---|---|
-| `app.py` · `bot.py` | composition root / entrypoint |
-| `config.py` · `projects.py` | `Config.from_env()`, project registry (`projects.json`) |
-| `claude_stream.py` | Claude subprocess + `parse_line` (NDJSON → events) + flags |
-| `turn.py` | turn core: segments, throttle, keepalive, stop, outcome |
-| `runner.py` | orchestrates a turn: RunSpec, bridge, policy, session, title, media delivery |
-| `telegram_sink.py` | `TelegramSink` (private: draft + rich) and `ReplySink` (group/guest) |
-| `mcp_bridge.py` · `bridge_server.py` | MCP stdio server spawned by Claude ↔ the bot's HTTP loopback (`/ask`, `/tool/<name>`) |
-| `permissions.py` · `permission_desk.py` | rules, sensitive commands, `decide()`, button UI |
-| `questions.py` · `checklist.py` · `delivery.py` · `scheduler.py` | `ask_user`, `update_checklist`, `send_file`, `schedule` tools |
-| `media.py` · `transcriber.py` · `sessions_index.py` | voice/image download, reply context, WhisperX (server + CLI), session index |
-| `handlers.py` · `callbacks.py` · `group.py` | routers: private/topics, buttons + Stop, groups/guest |
-| `store.py` · `formatting.py` | persisted `(chat, topic)` conversation; Markdown → Rich/HTML, chunking |
+| `app.py` · `__main__.py` | composition root / entrypoint (`tgclaude`) |
+| `config.py` · `services.py` | `Config.from_env()`, dependency container |
+| `core/turn.py` | turn core: segments, throttle, keepalive, stop, outcome |
+| `core/permissions.py` · `core/audit.py` | policy (read-only / sensitive / paths), `decide()`, decision log |
+| `core/projects.py` · `core/store.py` · `core/formatting.py` | project registry, persisted `(chat, topic)` conversation, Markdown → Rich/HTML |
+| `claude/stream.py` · `claude/runner.py` | Claude subprocess (NDJSON → events, flags) and turn orchestration |
+| `claude/mcp_bridge.py` · `claude/sessions_index.py` | MCP stdio server (stdlib only) spawned by Claude; session index |
+| `tools/server.py` | the bot's HTTP loopback (`/ask`, `/tool/<name>`) |
+| `tools/permission_desk.py` · `tools/questions.py` · `tools/checklist.py` · `tools/delivery.py` · `tools/scheduler.py` | what the bridge exposes: approval, `ask_user`, `update_checklist`, `send_file`, `schedule` |
+| `telegram/sink.py` · `telegram/handlers.py` · `telegram/callbacks.py` · `telegram/group.py` | aiogram adapters: draft/delivery, commands, buttons+Stop, groups/guest |
+| `telegram/media.py` · `telegram/transcriber.py` | voice/image download, reply context, WhisperX (server + CLI) |
 | `deploy/` | `systemd --user` units for the bot and `whisperx_server.py` |
-
 ## 🧪 Development
 
 ```bash
 uv run ruff format . && uv run ruff check .
-uv run python tests/test_core.py
+uv run pytest
 ```
 
 ## 🗺️ Roadmap

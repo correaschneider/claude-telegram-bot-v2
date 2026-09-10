@@ -12,7 +12,7 @@ import json
 import os
 from dataclasses import dataclass, field
 
-from permissions import split_rules
+from tgclaude.core.permissions import split_rules
 
 
 @dataclass(frozen=True)

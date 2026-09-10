@@ -9,7 +9,7 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, MessageGenerationStopped
 
-from services import Services
+from tgclaude.services import Services
 
 log = logging.getLogger("claude-bot")
 router = Router(name="common")

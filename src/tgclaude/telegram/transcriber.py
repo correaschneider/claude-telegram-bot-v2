@@ -15,7 +15,7 @@ from pathlib import Path
 
 import aiohttp
 
-from config import Config
+from tgclaude.config import Config
 
 log = logging.getLogger("claude-bot")
 

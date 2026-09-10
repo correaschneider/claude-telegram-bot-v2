@@ -42,8 +42,8 @@ sudo apt install -y ffmpeg util-linux git
 ```bash
 git clone git@github.com:correaschneider/claude-telegram-bot-v2.git
 cd claude-telegram-bot-v2
-uv sync                       # cria .venv e instala aiogram, APScheduler, python-dotenv (+ ruff)
-uv run python tests/test_core.py   # 18 testes, sem token nem rede — confirma que o ambiente está são
+uv sync                       # cria .venv, instala o pacote tgclaude (editável) e as deps (+ ruff, pytest)
+uv run pytest                      # 19 testes, sem token nem rede — confirma que o ambiente está são
 ```
 
 ## 3. Bot no Telegram (@BotFather)
@@ -177,7 +177,7 @@ projeto no `projects.json`, sem restart.
 ### 5.1 Manual (primeiro teste)
 
 ```bash
-uv run bot.py
+uv run tgclaude
 ```
 
 Deve logar `bot @seu_bot no ar; projetos=[...]; chats=[...]; topics=True guest=True`. Mande
@@ -189,7 +189,7 @@ Deve logar `bot @seu_bot no ar; projetos=[...]; chats=[...]; topics=True guest=T
 ```bash
 mkdir -p ~/.config/systemd/user
 cp deploy/claude-telegram-bot-v2.service ~/.config/systemd/user/
-# se o repo NÃO está em /data/projects/claude-telegram-bot-v2, ajuste WorkingDirectory e ExecStart no unit
+# se o repo NÃO está em /data/projects/claude-telegram-bot-v2, ajuste WorkingDirectory e ExecStart (.venv/bin/tgclaude) no unit
 systemctl --user daemon-reload
 systemctl --user enable --now claude-telegram-bot-v2
 loginctl enable-linger $USER          # continua rodando sem sessão gráfica / após reboot
@@ -203,7 +203,7 @@ journalctl --user -u claude-telegram-bot-v2 -f
 systemctl --user restart claude-telegram-bot-v2
 ```
 
-> Nunca `pkill -f "python bot.py"` de dentro de uma sessão do Claude Code: o `bash -c` do
+> Nunca `pkill -f tgclaude` de dentro de uma sessão do Claude Code: o `bash -c` do
 > próprio tool contém a string e morre junto. Use `systemctl --user restart` ou mate por PID.
 
 ## 6. Voz — WhisperX (opcional)
@@ -273,7 +273,7 @@ menor (`medium`, `small`) se ficar lento demais.
 ```bash
 git -C /data/projects/claude-telegram-bot-v2 pull
 uv sync
-uv run python tests/test_core.py
+uv run pytest
 systemctl --user restart claude-telegram-bot-v2
 # se deploy/whisperx_server.py mudou:
 systemctl --user restart whisperx-server

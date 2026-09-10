@@ -17,10 +17,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from store import Conversation
+from tgclaude.core.store import Conversation
 
 if TYPE_CHECKING:
-    from services import Services
+    from tgclaude.services import Services
 
 log = logging.getLogger("claude-bot")
 
@@ -151,8 +151,11 @@ class JobScheduler:
         return [(jid, j) for jid, j in self.store.jobs.items() if j.get("chat_id") == chat_id]
 
     async def _fire(self, jid: str) -> None:
-        from runner import is_busy, run_turn  # import tardio: runner importa services
-        from telegram_sink import TelegramSink
+        from tgclaude.claude.runner import (  # import tardio: runner importa services
+            is_busy,
+            run_turn,
+        )
+        from tgclaude.telegram.sink import TelegramSink
 
         services = self._services
         job = self.store.jobs.get(jid)

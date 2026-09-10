@@ -11,9 +11,9 @@ from aiogram import F, Router
 from aiogram.enums import ChatType
 from aiogram.types import Message
 
-from runner import is_busy, run_turn
-from services import Services
-from telegram_sink import ReplySink
+from tgclaude.claude.runner import is_busy, run_turn
+from tgclaude.services import Services
+from tgclaude.telegram.sink import ReplySink
 
 log = logging.getLogger("claude-bot")
 router = Router(name="group")

@@ -19,14 +19,14 @@ from aiogram.types import (
     InputTextMessageContent,
 )
 
-from formatting import (
+from tgclaude.core.formatting import (
     RICH_CHUNK_SIZE,
     chunk_markdown,
     md_to_html,
     plain_markdown,
     rich_markdown,
 )
-from turn import TurnOutcome
+from tgclaude.core.turn import TurnOutcome
 
 log = logging.getLogger("claude-bot")
 

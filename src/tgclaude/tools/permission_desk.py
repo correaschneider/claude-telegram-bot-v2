@@ -17,10 +17,10 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CopyTextButton, InlineKeyboardButton, InlineKeyboardMarkup
 
-import audit
-from permissions import PolicyLoader, describe, rule_for
-from services import ActiveTurn
-from store import ConversationStore
+from tgclaude.core import audit
+from tgclaude.core.permissions import PolicyLoader, describe, rule_for
+from tgclaude.core.store import ConversationStore
+from tgclaude.services import ActiveTurn
 
 log = logging.getLogger("claude-bot")
 

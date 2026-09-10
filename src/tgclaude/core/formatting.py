@@ -7,7 +7,7 @@ import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from turn import TurnOutcome
+    from tgclaude.core.turn import TurnOutcome
 
 TELEGRAM_MAX = 4096
 CHUNK_SIZE = 3800

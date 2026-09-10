@@ -8,9 +8,9 @@ import logging
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import InputRichMessage
 
-from formatting import checklist_html, checklist_markdown
-from services import Services
-from store import Conversation
+from tgclaude.core.formatting import checklist_html, checklist_markdown
+from tgclaude.core.store import Conversation
+from tgclaude.services import Services
 
 log = logging.getLogger("claude-bot")
 

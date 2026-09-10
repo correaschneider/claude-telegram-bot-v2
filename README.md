@@ -14,7 +14,7 @@
   <img alt="aiogram 3.31" src="https://img.shields.io/badge/aiogram-3.31-2CA5E0?logo=telegram&logoColor=white">
   <img alt="Bot API 10.3" src="https://img.shields.io/badge/Telegram%20Bot%20API-10.3-26A5E4?logo=telegram&logoColor=white">
   <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-headless-D97757">
-  <img alt="tests" src="https://img.shields.io/badge/tests-18%20passing-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-19%20passing-brightgreen">
   <img alt="license" src="https://img.shields.io/badge/uso-pessoal-lightgrey">
 </p>
 
@@ -93,7 +93,7 @@ git clone git@github.com:correaschneider/claude-telegram-bot-v2.git && cd claude
 uv sync
 cp .env.example .env                      # TELEGRAM_TOKEN, ALLOWED_CHAT_IDS, WORKSPACE
 cp projects.example.json projects.json    # alias → cwd, allowed_tools, tasks, chats
-uv run bot.py
+uv run tgclaude
 ```
 
 No **@BotFather → Mini App → seu bot → Settings**: ligue **Threaded Mode** (tópicos) e, se
@@ -105,46 +105,50 @@ Pra rodar como serviço, instalar o WhisperX e resolver problemas: **[INSTALL.md
 
 ```mermaid
 flowchart LR
-    TG[("Telegram")] <-- "updates · drafts · rich messages · botões" --> H["handlers / callbacks / group<br/>(aiogram)"]
-    H --> R["runner.py<br/>monta o turno"]
-    R --> T["turn.py<br/>buffer · throttle · keepalive · stop"]
-    T -- "DraftSink" --> S["telegram_sink.py"]
+    TG[("Telegram")] <-- "updates · drafts · rich messages · botões" --> H["telegram/handlers · callbacks · group<br/>(aiogram)"]
+    H --> R["claude/runner.py<br/>monta o turno"]
+    R --> T["core/turn.py<br/>buffer · throttle · keepalive · stop"]
+    T -- "DraftSink" --> S["telegram/sink.py"]
     S --> TG
     R -- "claude -p --output-format stream-json<br/>--permission-prompt-tool mcp__tg__ask" --> C["Claude Code<br/>(subprocesso)"]
     C -- "NDJSON" --> T
-    C -- "MCP stdio" --> B["mcp_bridge.py<br/>(stdlib)"]
-    B -- "HTTP loopback" --> BS["bridge_server.py"]
-    BS --> PD["permission_desk<br/>questions · checklist<br/>delivery · scheduler"]
+    C -- "MCP stdio" --> B["claude/mcp_bridge.py<br/>(stdlib)"]
+    B -- "HTTP loopback" --> BS["tools/server.py"]
+    BS --> PD["tools/permission_desk<br/>questions · checklist<br/>delivery · scheduler"]
     PD --> TG
     H --> W["whisperx_server<br/>(modelo residente)"]
 ```
 
-Portas & adaptadores: o núcleo (`turn.py`) só conhece `RunningClaude` (eventos) e
-`DraftSink` (rascunho/entrega). Por isso os 18 testes rodam sem token, sem rede e sem GPU —
+Portas & adaptadores: o núcleo (`core/turn.py`) só conhece `RunningClaude` (eventos) e
+`DraftSink` (rascunho/entrega). Por isso os 19 testes rodam sem token, sem rede e sem GPU —
 e os fluxos reais (aprovar, negar, "sempre", grupo, perguntas, agendamento, arquivos) foram
 validados de ponta a ponta contra o Claude de verdade.
 
+Layout padrão de aplicação Python: pacote instalável em **`src/tgclaude/`** (*src layout*),
+entrypoint declarado em `pyproject.toml` (`uv run tgclaude` ou `python -m tgclaude`), testes em
+`tests/` com pytest, e o que não é código do pacote em `deploy/`. Subpacotes por camada:
+`core/` (sem Telegram nem subprocesso), `claude/` (lado Claude Code), `tools/` (o que a bridge
+expõe ao Claude) e `telegram/` (adaptadores aiogram).
+
 | Módulo | Responsabilidade |
 |---|---|
-| `app.py` · `bot.py` | composition root / entrypoint |
-| `config.py` · `projects.py` | `Config.from_env()`, registry de projetos (`projects.json`) |
-| `claude_stream.py` | subprocesso do Claude + `parse_line` (NDJSON → eventos) + flags |
-| `turn.py` | núcleo do turno: segmentos, throttle, keepalive, stop, resultado |
-| `runner.py` | orquestra um turno: RunSpec, bridge, política, sessão, título, entrega de mídia |
-| `telegram_sink.py` | `TelegramSink` (privado: draft + rich) e `ReplySink` (grupo/guest) |
-| `mcp_bridge.py` · `bridge_server.py` | servidor MCP stdio que o Claude sobe ↔ HTTP loopback do bot (`/ask`, `/tool/<nome>`) |
-| `permissions.py` · `permission_desk.py` | regras, comando sensível, `decide()`, UI dos botões |
-| `questions.py` · `checklist.py` · `delivery.py` · `scheduler.py` | tools `ask_user`, `update_checklist`, `send_file`, `schedule` |
-| `media.py` · `transcriber.py` · `sessions_index.py` | download voz/imagem, reply-context, WhisperX (servidor + CLI), índice de sessões |
-| `handlers.py` · `callbacks.py` · `group.py` | routers: privado/tópicos, botões+Stop, grupos/guest |
-| `store.py` · `formatting.py` | conversa `(chat, tópico)` persistida; Markdown → Rich/HTML, chunking |
+| `app.py` · `__main__.py` | composition root / entrypoint (`tgclaude`) |
+| `config.py` · `services.py` | `Config.from_env()`, container de dependências |
+| `core/turn.py` | núcleo do turno: segmentos, throttle, keepalive, stop, resultado |
+| `core/permissions.py` · `core/audit.py` | política (read-only / sensível / caminhos), `decide()`, log de decisões |
+| `core/projects.py` · `core/store.py` · `core/formatting.py` | registry de projetos, conversa `(chat, tópico)` persistida, Markdown → Rich/HTML |
+| `claude/stream.py` · `claude/runner.py` | subprocesso do Claude (NDJSON → eventos, flags) e orquestração do turno |
+| `claude/mcp_bridge.py` · `claude/sessions_index.py` | servidor MCP stdio (só stdlib) spawnado pelo Claude; índice de sessões |
+| `tools/server.py` | HTTP loopback do bot (`/ask`, `/tool/<nome>`) |
+| `tools/permission_desk.py` · `tools/questions.py` · `tools/checklist.py` · `tools/delivery.py` · `tools/scheduler.py` | o que a bridge expõe: aprovação, `ask_user`, `update_checklist`, `send_file`, `schedule` |
+| `telegram/sink.py` · `telegram/handlers.py` · `telegram/callbacks.py` · `telegram/group.py` | adaptadores aiogram: rascunho/entrega, comandos, botões+Stop, grupos/guest |
+| `telegram/media.py` · `telegram/transcriber.py` | download voz/imagem, reply-context, WhisperX (servidor + CLI) |
 | `deploy/` | units `systemd --user` do bot e do `whisperx_server.py` |
-
 ## 🧪 Desenvolvimento
 
 ```bash
 uv run ruff format . && uv run ruff check .
-uv run python tests/test_core.py
+uv run pytest
 ```
 
 ## 🗺️ Roadmap

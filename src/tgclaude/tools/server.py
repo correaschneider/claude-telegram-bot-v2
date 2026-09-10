@@ -9,10 +9,10 @@ from collections.abc import Awaitable, Callable
 
 from aiohttp import web
 
-from checklist import update_checklist
-from delivery import send_paths
-from scheduler import describe
-from services import ActiveTurn, Services
+from tgclaude.services import ActiveTurn, Services
+from tgclaude.tools.checklist import update_checklist
+from tgclaude.tools.delivery import send_paths
+from tgclaude.tools.scheduler import describe
 
 log = logging.getLogger("claude-bot")
 

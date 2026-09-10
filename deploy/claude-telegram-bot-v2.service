@@ -13,7 +13,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/data/projects/claude-telegram-bot-v2
-ExecStart=/data/projects/claude-telegram-bot-v2/.venv/bin/python bot.py
+ExecStart=/data/projects/claude-telegram-bot-v2/.venv/bin/tgclaude
 Restart=always
 RestartSec=5
 # `claude` e `whisperx-cli` vivem em ~/.local/bin; o .env é lido pelo próprio bot.

@@ -10,12 +10,12 @@ import secrets
 
 from aiogram.exceptions import TelegramBadRequest
 
-from claude_stream import RunSpec
-from delivery import send_generated_files
-from permissions import split_rules
-from services import ActiveTurn, Services
-from store import Conversation
-from turn import DraftSink, Turn, TurnOutcome
+from tgclaude.claude.stream import RunSpec
+from tgclaude.core.permissions import split_rules
+from tgclaude.core.store import Conversation
+from tgclaude.core.turn import DraftSink, Turn, TurnOutcome
+from tgclaude.services import ActiveTurn, Services
+from tgclaude.tools.delivery import send_generated_files
 
 log = logging.getLogger("claude-bot")
 

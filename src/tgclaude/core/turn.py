@@ -10,8 +10,8 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from claude_stream import Event, Exited, Init, Result, TextDelta, ToolDone, ToolStart
-from formatting import fmt_tokens, format_elapsed
+from tgclaude.claude.stream import Event, Exited, Init, Result, TextDelta, ToolDone, ToolStart
+from tgclaude.core.formatting import fmt_tokens, format_elapsed
 
 log = logging.getLogger("claude-bot")
 
