@@ -182,7 +182,7 @@ async def on_start(message: Message, services: Services) -> None:
     await message.answer(
         "Bot v2 — streaming do Claude Code.\n"
         f"Projeto desta conversa: {conv.project}\n\n"
-        "Texto, voz ou imagem. Responder a uma mensagem inclui ela no contexto.\n"
+        "Texto, voz, imagem ou vídeo. Responder a uma mensagem inclui ela no contexto.\n"
         "/project · /new <alias> · /fork · /sessions · /status · /reset · /cancel\n"
         "/yolo [min] · /allow · /link · /jobs · /unschedule <id>"
     )
@@ -569,4 +569,8 @@ async def on_image(message: Message, services: Services) -> None:
 
 @router.message()
 async def on_other(message: Message) -> None:
-    await message.answer("Aceito texto, voz e imagem. Esse tipo de mensagem ainda não.")
+    # Mensagens de serviço (tópico criado, pin, membro entrou…) não têm conteúdo do usuário.
+    if not (message.document or message.sticker or message.animation or message.location
+            or message.contact or message.poll or message.audio):  # fmt: skip
+        return
+    await message.answer("Aceito texto, voz, imagem e vídeo. Esse tipo de mensagem ainda não.")
