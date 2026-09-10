@@ -60,6 +60,7 @@ async def _handle(message: Message, services: Services) -> None:
         services.bot,
         receiver_user_id=None if public else message.from_user.id,
         guest_query_id=message.guest_query_id,
+        reply_to_message_id=message.message_id,
         use_rich=services.cfg.rich_messages,
     )
     try:

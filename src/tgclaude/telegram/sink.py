@@ -17,6 +17,7 @@ from aiogram.types import (
     InlineQueryResultArticle,
     InputRichMessage,
     InputTextMessageContent,
+    ReplyParameters,
 )
 
 from tgclaude.core.formatting import (
@@ -40,38 +41,40 @@ async def send_markdown(
     *,
     use_rich: bool = True,
     ephemeral: EphemeralMessageParameters | None = None,
+    reply_to: int | None = None,
 ) -> None:
-    """Tenta Rich Message; cai pra HTML e, se ainda falhar, texto puro."""
+    """Tenta Rich Message; cai pra HTML e, se ainda falhar, texto puro. Erro que não é de
+    formatação (ex.: BOT_NOT_ADMIN da efêmera) sobe pro chamador em vez de virar 3 tentativas."""
+    common = {
+        "message_thread_id": thread_id,
+        "ephemeral_message_parameters": ephemeral,
+        "reply_parameters": ReplyParameters(message_id=reply_to) if reply_to else None,
+    }
     if use_rich:
         try:
             for chunk in chunk_markdown(rich, RICH_CHUNK_SIZE):
                 await bot.send_rich_message(
-                    chat_id,
-                    rich_message=InputRichMessage(markdown=chunk),
-                    message_thread_id=thread_id,
-                    ephemeral_message_parameters=ephemeral,
+                    chat_id, rich_message=InputRichMessage(markdown=chunk), **common
                 )
             return
         except TelegramBadRequest as e:
+            if not _is_format_error(e):
+                raise
             log.warning("rich message rejeitada (%s); caindo pra HTML", e)
     for chunk in chunk_markdown(plain):
         try:
-            await bot.send_message(
-                chat_id,
-                md_to_html(chunk),
-                parse_mode="HTML",
-                message_thread_id=thread_id,
-                ephemeral_message_parameters=ephemeral,
-            )
+            await bot.send_message(chat_id, md_to_html(chunk), parse_mode="HTML", **common)
         except TelegramBadRequest as e:
+            if not _is_format_error(e):
+                raise
             log.warning("HTML rejeitado (%s); enviando texto puro", e)
-            await bot.send_message(
-                chat_id,
-                chunk,
-                parse_mode=None,
-                message_thread_id=thread_id,
-                ephemeral_message_parameters=ephemeral,
-            )
+            await bot.send_message(chat_id, chunk, parse_mode=None, **common)
+
+
+def _is_format_error(e: TelegramBadRequest) -> bool:
+    """Erros de parse/entidade valem tentar de novo com formatação mais simples; o resto não."""
+    msg = str(e).lower()
+    return any(k in msg for k in ("parse", "entit", "tag", "markdown", "rich", "too long"))
 
 
 class TelegramSink:
@@ -113,11 +116,13 @@ class ReplySink:
         *,
         receiver_user_id: int | None = None,
         guest_query_id: str | None = None,
+        reply_to_message_id: int | None = None,
         use_rich: bool = True,
     ) -> None:
         self._bot = bot
         self._receiver = receiver_user_id
         self._guest = guest_query_id
+        self._reply_to = reply_to_message_id
         self._use_rich = use_rich
         self._last_typing = 0.0
 
@@ -147,12 +152,28 @@ class ReplySink:
         ephemeral = (
             EphemeralMessageParameters(receiver_user_id=self._receiver) if self._receiver else None
         )
-        await send_markdown(
-            self._bot,
-            chat_id,
-            thread_id,
-            rich_markdown(outcome),
-            plain,
-            use_rich=self._use_rich,
-            ephemeral=ephemeral,
-        )
+        try:
+            await send_markdown(
+                self._bot,
+                chat_id,
+                thread_id,
+                rich_markdown(outcome),
+                plain,
+                use_rich=self._use_rich,
+                ephemeral=ephemeral,
+                reply_to=self._reply_to,
+            )
+        except TelegramBadRequest as e:
+            if ephemeral is None or "BOT_NOT_ADMIN" not in str(e):
+                raise
+            # Efêmera exige o bot como admin do grupo; melhor responder em público que sumir.
+            log.warning("efêmera exige bot admin no grupo %s; respondendo em público", chat_id)
+            await send_markdown(
+                self._bot,
+                chat_id,
+                thread_id,
+                rich_markdown(outcome),
+                plain,
+                use_rich=self._use_rich,
+                reply_to=self._reply_to,
+            )

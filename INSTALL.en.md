@@ -55,7 +55,7 @@ uv run pytest                      # 19 tests, no token, no network — confirms
    - **Threaded Mode** → ON — topics in private chats (`/new`, `/fork`, deep links).
      Leave *"Disallow users to create new threads"* OFF.
    - **Guest Chat Mode** → ON — only if you want to use the bot in groups without adding it as a member.
-   - *Group Privacy*: with it **on** (default) Telegram delivers only **commands** (`/ask …`) and **replies** to the bot's messages — a `@bot` mention **does not arrive**. To make mentions work, turn it off and **remove/re-add the bot** to the group (or make the bot an admin).
+   - *Group Privacy*: with it **on** (default) Telegram delivers only **commands** (`/ask …`) and **replies** to the bot's messages — a `@bot` mention **does not arrive**. To make mentions work, turn it off and **remove/re-add the bot** to the group (or make the bot an admin). **Ephemeral replies** (visible only to the asker) also require the bot to be a group **admin**; otherwise the bot answers publicly, as a reply.
 3. Propagation takes **~5 min**. Check:
    ```bash
    curl -s "https://api.telegram.org/bot<TOKEN>/getMe" | grep -o '"has_topics_enabled":[a-z]*\|"supports_guest_queries":[a-z]*'
@@ -298,4 +298,5 @@ systemctl --user restart whisperx-server
 | draft disappears after ~30 s idle | Telegram behavior; the bot resends every `DRAFT_KEEPALIVE_SECONDS` — if Claude has been silent longer than that, check the journal |
 | `permission_denials` in the footer | Claude tried something outside the allowlist with no approver (group/job) — adjust `allowed_tools` |
 | `@bot` mention in a group never arrives (not even in the log) | *Group Privacy* is on: Telegram doesn't deliver mentions. Use `/ask …` or a reply, or turn privacy off and re-add the bot |
+| in a group the answer is public, not ephemeral | the bot isn't a group admin (`BOT_NOT_ADMIN` in the log): promote it |
 | changed `.env` and nothing happened | `.env` is read only at start: `systemctl --user restart claude-telegram-bot-v2` |
