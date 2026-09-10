@@ -107,6 +107,15 @@ A resposta é **efêmera** (só quem perguntou vê) quando o bot é admin; `#tod
 torna pública. Em grupo **nunca** há card de aprovação: o que não estiver em `allowed_tools`
 do projeto é negado (e aparece no rodapé como `permission_denials`).
 
+### 3.3 Canais
+
+O bot só entra em canal como **admin** (com direito de postar) e recebe os posts como
+`channel_post`. Post não tem autor, então a autorização é só pelo **id do canal** em
+`ALLOWED_CHAT_IDS` (pegue pelo journal, como em 3.1). Um post com `/ask <pergunta>` ou menção
+`@bot` dispara um turno e a resposta vem como **post público em reply** ao original — em canal
+não existe efêmera nem rascunho. Comentários no grupo de discussão vinculado seguem a regra de
+grupo (3.2). Sem card de aprovação: o que não estiver em `allowed_tools` é negado.
+
 ## 4. Configuração
 
 ### 4.1 `.env`

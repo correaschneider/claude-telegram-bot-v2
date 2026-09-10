@@ -57,7 +57,7 @@ class AllowlistMiddleware(BaseMiddleware):
         if chat_id not in self._chats and user_id not in self._users:
             log.warning("update ignorado: chat=%s user=%s", chat_id, user_id)
             return None
-        msg = event.message or event.edited_message or event.guest_message
+        msg = event.message or event.edited_message or event.guest_message or event.channel_post
         kind = f"{event.event_type}/{msg.content_type}" if msg else event.event_type
         log.info(
             "update %s chat=%s user=%s thread=%s",
@@ -73,6 +73,9 @@ def ids_of(update: Update) -> tuple[int | None, int | None]:
     msg = update.message or update.edited_message or update.guest_message
     if msg:
         return msg.chat.id, msg.from_user.id if msg.from_user else None
+    post = update.channel_post or update.edited_channel_post
+    if post:
+        return post.chat.id, None
     if update.stopped_message_generation:
         return update.stopped_message_generation.chat.id, None
     if update.callback_query:

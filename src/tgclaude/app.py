@@ -98,7 +98,9 @@ async def run() -> None:
     dp.update.outer_middleware(
         handlers.AllowlistMiddleware(cfg.allowed_chat_ids, cfg.allowed_user_ids)
     )
-    dp.include_routers(callbacks.router, handlers.router, group.router, group.guest_router)
+    dp.include_routers(
+        callbacks.router, handlers.router, group.router, group.guest_router, group.channel_router
+    )
 
     await bot.set_my_commands(COMMANDS)
     scheduler.start()

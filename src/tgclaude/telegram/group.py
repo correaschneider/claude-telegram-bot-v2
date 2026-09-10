@@ -88,3 +88,39 @@ guest_router = Router(name="guest")
 @guest_router.guest_message()
 async def on_guest_message(message: Message, services: Services) -> None:
     await _handle(message, services)
+
+
+# Canais: o bot só entra como admin e recebe `channel_post`. Post não tem autor (from_user),
+# então a autorização é pelo id do canal em ALLOWED_CHAT_IDS. Efêmera e rascunho não existem
+# em canal: a resposta é um post público em reply ao original.
+channel_router = Router(name="channel")
+
+
+@channel_router.channel_post(F.text | F.caption)
+async def on_channel_post(message: Message, services: Services) -> None:
+    parsed = _prompt_from(message, services)
+    if not parsed or not parsed[0]:
+        return
+    prompt, _ = parsed
+    project = services.projects.for_chat(message.chat.id) or services.projects.default
+    conv = services.store.ensure(message.chat.id, 0, project.alias)
+    if is_busy(services, conv):
+        await message.reply("⏳ Ainda processando o post anterior deste canal.")
+        return
+    sink = ReplySink(
+        services.bot,
+        reply_to_message_id=message.message_id,
+        use_rich=services.cfg.rich_messages,
+    )
+    try:
+        await run_turn(
+            services,
+            conv,
+            prompt,
+            draft_id=message.message_id,
+            sink=sink,
+            actor_id=message.chat.id,
+            allow_prompt=False,
+        )
+    except Exception:
+        log.exception("turno de canal falhou conv=%s", conv.key)

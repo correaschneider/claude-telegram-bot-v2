@@ -69,7 +69,7 @@ is the only Python library exposing Bot API 10.x.
 | 📎 **Files** | png/pdf/mp3/mp4 mentioned by absolute path arrive on their own; the `send_file` tool delivers any file. |
 | ⏰ **Schedules** | `schedule` tool (5-field cron or `every_seconds`): fires in the originating topic with its own session. `/jobs`, `/unschedule`. |
 | 🔗 **Deep links** | `/link habilis` or `/link HT-123` → `t.me/<bot>?start=…` opens a topic already in the right project. |
-| 👥 **Groups / guest mode** | In allowed groups, triggered by a **reply** to a bot message, by **`/ask <question>`**, or by a mention (`@bot` only arrives with *Group Privacy* off — Telegram doesn't deliver mentions in privacy mode). Without being a member, via guest mode. **Ephemeral** answer visible only to the asker (`#todos` = public; ephemeral requires the bot to be a group **admin** — otherwise it answers publicly, as a reply). Groups never get approval prompts: anything outside the allowlist is denied. |
+| 👥 **Groups / guest mode** | In allowed groups, triggered by a **reply** to a bot message, by **`/ask <question>`**, or by a mention (`@bot` only arrives with *Group Privacy* off — Telegram doesn't deliver mentions in privacy mode). Without being a member, via guest mode. **Ephemeral** answer visible only to the asker (`#todos` = public; ephemeral requires the bot to be a group **admin** — otherwise it answers publicly, as a reply). Groups never get approval prompts: anything outside the allowlist is denied. In a **channel** (bot as admin), a post with `/ask …` gets a public reply. |
 
 ## 🛡️ Permission policy
 

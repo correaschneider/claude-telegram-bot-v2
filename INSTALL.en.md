@@ -110,6 +110,15 @@ The answer is **ephemeral** (only the asker sees it) when the bot is an admin; `
 message makes it public. Groups **never** get an approval card: anything not in the project's
 `allowed_tools` is denied (and shows up in the footer as `permission_denials`).
 
+### 3.3 Channels
+
+A bot can only join a channel as an **admin** (with the right to post) and receives posts as
+`channel_post`. Posts have no author, so authorization is only by the **channel id** in
+`ALLOWED_CHAT_IDS` (get it from the journal, as in 3.1). A post with `/ask <question>` or a
+`@bot` mention triggers a turn and the answer comes as a **public post replying** to the
+original — channels have no ephemeral messages or drafts. Comments in the linked discussion
+group follow the group rules (3.2). No approval card: anything not in `allowed_tools` is denied.
+
 ## 4. Configuration
 
 ### 4.1 `.env`
