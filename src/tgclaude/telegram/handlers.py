@@ -512,22 +512,27 @@ async def on_video(message: Message, services: Services) -> None:
     wav = f"{os.path.splitext(path)[0]}.wav"
     try:
         duration, tracks = await video.probe(path)
-        await step(f"🎬 {video.fmt_ts(duration)} · extraindo áudio…")
-        await video.extract_audio(path, wav, tracks)
-        await step(f"🎬 {video.fmt_ts(duration)} · transcrevendo…")
-        text, segments = await services.transcriber.transcribe_segments(wav)
-        if not text:
-            await step("🤷 Não identifiquei fala no vídeo.")
-            return
-        txt_path, _ = video.write_transcripts(path, text, segments)
-        await step(f"🎬 {video.fmt_ts(duration)} · {len(segments)} trechos · escolhendo momentos…")
-        moments = await video.select_moments(
-            cfg.claude_bin,
-            segments,
-            duration,
-            max_moments=cfg.video_max_moments,
-            cwd=cfg.video_tmp_dir,
-        )
+        text, segments, txt_path = "", [], None
+        if tracks:
+            await step(f"🎬 {video.fmt_ts(duration)} · extraindo áudio…")
+            await video.extract_audio(path, wav, tracks)
+            await step(f"🎬 {video.fmt_ts(duration)} · transcrevendo…")
+            text, segments = await services.transcriber.transcribe_segments(wav)
+        if text:
+            txt_path, _ = video.write_transcripts(path, text, segments)
+            await step(
+                f"🎬 {video.fmt_ts(duration)} · {len(segments)} trechos · escolhendo momentos…"
+            )
+            moments = await video.select_moments(
+                cfg.claude_bin,
+                segments,
+                duration,
+                max_moments=cfg.video_max_moments,
+                cwd=cfg.video_tmp_dir,
+            )
+        else:
+            await step(f"🎬 {video.fmt_ts(duration)} · sem fala · detectando cenas…")
+            moments = await video.scene_moments(path, duration, cfg.video_max_moments)
         await step(f"🎬 {video.fmt_ts(duration)} · {len(moments)} momentos · extraindo prints…")
         moments = await video.extract_frames(path, moments, duration)
         n_img = sum(1 for m in moments if m.image)
@@ -542,7 +547,8 @@ async def on_video(message: Message, services: Services) -> None:
         with contextlib.suppress(OSError):
             os.remove(wav)
 
-    await message.answer(f"{TRANSCRIPT_HEADER} {text[:300]}{'…' if len(text) > 300 else ''}")
+    if text:
+        await message.answer(f"{TRANSCRIPT_HEADER} {text[:300]}{'…' if len(text) > 300 else ''}")
     prompt = video.digest_prompt((message.caption or "").strip(), path, duration, txt_path, moments)
     await _start_turn(services, message, conv, prompt)
 

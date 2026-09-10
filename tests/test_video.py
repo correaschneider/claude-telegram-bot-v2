@@ -58,3 +58,23 @@ def test_write_transcripts_and_prompt():
         assert '1. [00:12] abre a tela — "olha aqui" → ' + os.path.join(d, "m1.jpg") in p
         assert "2. [00:40] sem print" in p and "(sem print útil neste instante)" in p
         assert digest_prompt("resume a call", video, 95, txt, moments).startswith("resume a call")
+
+
+def test_scene_fallbacks():
+    from tgclaude.tools.video import parse_scene_times, spread_moments
+
+    err = "x pts_time:1.500 y\nz pts_time:0.2\nw pts_time:9.000 pts_time:1.500"
+    assert parse_scene_times(err) == [0.2, 1.5, 9.0]
+    # poucos cortes válidos (0.2 < 0.5 cai fora) → amostragem uniforme: 60s → 6 prints
+    ms = spread_moments([0.2, 1.5], 60, 8)
+    assert [m.t for m in ms] == [5.0, 15.0, 25.0, 35.0, 45.0, 55.0] and ms[0].label == "cena 1"
+    assert [m.t for m in spread_moments([], 6, 8)] == [3.0]
+    # muitos cortes → reduz ao teto mantendo a ordem
+    many = spread_moments([float(t) for t in range(1, 41)], 60, 4)
+    assert len(many) == 4 and [m.t for m in many] == sorted(m.t for m in many)
+    p = digest_prompt("", "/v.mp4", 12, None, [Moment(3.0, "cena 1", "", "/v.moments/m.jpg")])
+    assert (
+        "NÃO tem fala" in p
+        and "1. [00:03] cena 1 → /v.moments/m.jpg" in p
+        and "Transcrição" not in p
+    )

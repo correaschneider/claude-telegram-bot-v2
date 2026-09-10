@@ -13,6 +13,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import shutil
 from dataclasses import dataclass
 
@@ -218,6 +219,35 @@ async def extract_frames(video: str, moments: list[Moment], duration: float) -> 
     return moments
 
 
+SCENE_THRESHOLD = 0.3  # sensibilidade do detector de corte do ffmpeg (0–1)
+_PTS_RE = re.compile(r"pts_time:([0-9.]+)")
+
+
+def parse_scene_times(showinfo_stderr: str) -> list[float]:
+    return sorted({round(float(t), 3) for t in _PTS_RE.findall(showinfo_stderr)})
+
+
+def spread_moments(times: list[float], duration: float, max_moments: int) -> list[Moment]:
+    """Sem fala: cortes de cena viram momentos; poucos cortes → amostragem uniforme."""
+    times = [t for t in times if 0.5 <= t <= duration]
+    if len(times) < 2:
+        n = max(1, min(max_moments, int(duration // 10) or 1))
+        times = [round(duration * (i + 0.5) / n, 3) for i in range(n)]
+    elif len(times) > max_moments:
+        step = len(times) / max_moments
+        times = [times[int(i * step)] for i in range(max_moments)]
+    return [Moment(t, f"cena {i}", "") for i, t in enumerate(times, 1)]
+
+
+async def scene_moments(video: str, duration: float, max_moments: int) -> list[Moment]:
+    _, _, err = await _run(
+        "ffmpeg", "-loglevel", "info", "-i", video,
+        "-vf", f"select='gt(scene,{SCENE_THRESHOLD})',showinfo", "-f", "null", "-",
+        timeout=600,
+    )  # fmt: skip
+    return spread_moments(parse_scene_times(err), duration, max_moments)
+
+
 async def select_moments(
     claude_bin: str, segments: list[dict], duration: float, *, max_moments: int, cwd: str
 ) -> list[Moment]:
@@ -245,25 +275,46 @@ async def select_moments(
 
 
 def digest_prompt(
-    caption: str, video: str, duration: float, txt_path: str, moments: list[Moment]
+    caption: str, video: str, duration: float, txt_path: str | None, moments: list[Moment]
 ) -> str:
+    """`txt_path=None` = vídeo sem fala: o digest é só visual, pelos prints."""
     lines = [
         caption or "Faça o digest deste vídeo.",
         "",
         f"[Vídeo enviado pelo usuário: {video} — duração {fmt_ts(duration)}]",
-        f"Transcrição completa do áudio (leia com Read): {txt_path}",
-        "Momentos-chave já escolhidos e com print extraído (abra cada .jpg com Read):",
     ]
+    if txt_path:
+        lines += [
+            f"Transcrição completa do áudio (leia com Read): {txt_path}",
+            "Momentos-chave já escolhidos e com print extraído (abra cada .jpg com Read):",
+        ]
+    else:
+        lines += [
+            "O vídeo NÃO tem fala (sem trilha de áudio ou sem voz). Os prints abaixo foram tirados "
+            "nos cortes de cena, em ordem; abra cada .jpg com Read:",
+        ]
     for i, m in enumerate(moments, 1):
         img = m.image or "(sem print útil neste instante)"
-        lines.append(f'{i}. [{fmt_ts(m.t)}] {m.label} — "{m.quote}" → {img}')
-    lines += [
-        "",
-        "Responda com: (a) resumo do vídeo em 3-6 frases (pauta, decisões, próximos passos), "
-        "com base na transcrição inteira; (b) uma seção por momento, em ordem cronológica, no "
-        "formato `### [MM:SS] label` + 1-2 frases descrevendo o que aparece no print (aplicação, "
-        "elementos, textos legíveis, quem apresenta) + a quote em blockquote. Cite o caminho "
-        "absoluto de cada .jpg usado — o bot envia as imagens automaticamente. Não invente nada "
-        "que não esteja na transcrição ou nas imagens.",
-    ]
+        quote = f' — "{m.quote}"' if m.quote else ""
+        lines.append(f"{i}. [{fmt_ts(m.t)}] {m.label}{quote} → {img}")
+    if txt_path:
+        lines += [
+            "",
+            "Responda com: (a) resumo do vídeo em 3-6 frases (pauta, decisões, próximos passos), "
+            "com base na transcrição inteira; (b) uma seção por momento, em ordem cronológica, no "
+            "formato `### [MM:SS] label` + 1-2 frases descrevendo o que aparece no print "
+            "(aplicação, elementos, textos legíveis, quem apresenta) + a quote em blockquote.",
+        ]
+    else:
+        lines += [
+            "",
+            "Responda com: (a) o que o vídeo mostra, em 3-6 frases, reconstruindo a sequência de "
+            "ações/telas a partir dos prints; (b) uma seção por print, em ordem, no formato "
+            "`### [MM:SS] <título curto que você der>` + 1-2 frases do que aparece (aplicação, "
+            "elementos, textos legíveis).",
+        ]
+    lines.append(
+        "Cite o caminho absoluto de cada .jpg usado — o bot envia as imagens automaticamente. "
+        "Não invente nada que não esteja na transcrição ou nas imagens."
+    )
     return "\n".join(lines)
