@@ -62,6 +62,7 @@ class Config:
 
     group_public_tag: str
 
+    whisperx_server_url: str  # servidor residente; vazio = só CLI
     whisperx_bin: str
     whisperx_model: str
     whisperx_device: str
@@ -109,11 +110,12 @@ class Config:
             bridge_port=int(env.get("BRIDGE_PORT", "0")),
             mcp_tool_timeout_ms=int(env.get("MCP_TOOL_TIMEOUT_MS", str(24 * 3600 * 1000))),
             group_public_tag=env.get("GROUP_PUBLIC_TAG", "#todos"),
+            whisperx_server_url=env.get("WHISPERX_SERVER_URL", "http://127.0.0.1:8765").strip(),
             whisperx_bin=env.get("WHISPERX_BIN") or os.path.expanduser("~/.local/bin/whisperx-cli"),
             whisperx_model=env.get("WHISPERX_MODEL", "large-v3"),
             whisperx_device=env.get("WHISPERX_DEVICE", "cuda"),
             whisperx_language=env.get("WHISPERX_LANGUAGE", "pt"),
-            whisperx_compute_type=env.get("WHISPERX_COMPUTE_TYPE", "int8"),
+            whisperx_compute_type=env.get("WHISPERX_COMPUTE_TYPE", "float16"),
             whisperx_batch=env.get("WHISPERX_BATCH", "8"),
             whisperx_lock=env.get("WHISPERX_LOCK", "/tmp/whisperx-pipeline.lock"),
             audio_tmp_dir=env.get("AUDIO_TMP_DIR", "/tmp/telegram-audio"),

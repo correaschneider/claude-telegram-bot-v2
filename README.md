@@ -16,7 +16,7 @@ reescrito em **aiogram 3.31** porque só ele expõe a Bot API 10.x.
 | F5 | **Checklist** | Tool `tg.update_checklist`: o Claude registra o plano e marca etapas; Rich Message com task list editada in-place. |
 | F6 | **Deep link** | `/link <alias>` ou `/link HT-123` → `t.me/<bot>?start=…` abre um tópico já no projeto certo. |
 | F7 | **Grupos / guest mode** | Menção ou reply em grupos autorizados (e `guest_message` sem ser membro): "digitando…" + resposta **efêmera** pro autor (`#todos` = pública). Sem aprovação em grupo: fora da allowlist é negado. |
-| — | **Voz** | Mensagem de voz/áudio → WhisperX (CLI local, GPU) → eco `📝 Transcrito:` → turno. |
+| — | **Voz** | Mensagem de voz/áudio → **WhisperX residente** (`deploy/whisperx_server.py`, modelo `large-v3` float16 carregado uma vez, ~0,5 s por áudio; descarrega após 15 min ocioso) → eco `📝 Transcrito:` → turno. Sem o servidor, cai no CLI (~10 s, sobe o modelo a cada chamada). |
 | — | **Imagem** | Foto/documento de imagem → baixada pro disco → o Claude abre com `Read`. Legenda vira o pedido. |
 | — | **Reply** | Responder a uma mensagem (texto, transcrição, imagem, trecho selecionado) inclui o teor dela no prompt. |
 | — | **Perguntas com botões** | Tool `tg.ask_user(question, options, multi)`: o Claude pergunta, você toca, ele continua. |
@@ -49,11 +49,13 @@ usar em grupos sem adicionar o bot, **Guest Chat Mode** (F7). A propagação lev
 ### Como serviço (systemd --user)
 
 ```bash
-cp deploy/claude-telegram-bot-v2.service ~/.config/systemd/user/
+cp deploy/claude-telegram-bot-v2.service deploy/whisperx-server.service ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable --now claude-telegram-bot-v2
-journalctl --user -u claude-telegram-bot-v2 -f
+systemctl --user enable --now whisperx-server claude-telegram-bot-v2
+journalctl --user -u claude-telegram-bot-v2 -u whisperx-server -f
 ```
+
+O `whisperx-server` roda no venv do WhisperX (`~/whisperx/.venv`), não no do bot.
 
 Comandos: `/status` · `/project` · `/new` · `/fork` · `/sessions` · `/reset` · `/cancel` ·
 `/yolo [min]` · `/allow [clear]` · `/jobs` · `/unschedule <id>` · `/link`.

@@ -1,0 +1,25 @@
+# Unit de usuário (systemd --user) do WhisperX residente. Instalar:
+#   cp deploy/whisperx-server.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now whisperx-server
+# Logs: journalctl --user -u whisperx-server -f
+[Unit]
+Description=WhisperX residente (transcrição por HTTP em loopback)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/whisperx/.venv/bin/python /data/projects/claude-telegram-bot-v2/deploy/whisperx_server.py
+Restart=always
+RestartSec=5
+Environment=WHISPERX_PORT=8765
+Environment=WHISPERX_MODEL=large-v3
+Environment=WHISPERX_COMPUTE_TYPE=float16
+Environment=WHISPERX_LANGUAGE=pt
+# Descarrega o modelo (libera ~3 GB de VRAM) após 15 min sem áudio; recarrega em ~6 s.
+Environment=WHISPERX_IDLE_SECONDS=900
+Environment=HF_HUB_OFFLINE=1
+Environment=PYTHONUNBUFFERED=1
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target
