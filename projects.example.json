@@ -1,0 +1,18 @@
+{
+  "main": {
+    "path": "/data/projects",
+    "default": true,
+    "allowed_tools": "Read Edit Write Glob Grep Bash(git:*) Bash(ls:*) Bash(cat:*)"
+  },
+  "habilis": {
+    "path": "/data/projects/Habilis",
+    "allowed_tools": "Read Edit Write Glob Grep Bash(git:*) mcp__claude_ai_Atlassian_Rovo",
+    "tasks": ["HT", "HAB"],
+    "chats": [-1001234567890]
+  },
+  "smsfunnel": {
+    "path": "/data/projects/Otimiza/SMSFunnel",
+    "allowed_tools": "Read Edit Write Glob Grep Bash(git:*) Bash(docker:*) mcp__clickup",
+    "tasks": ["CU"]
+  }
+}

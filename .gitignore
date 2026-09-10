@@ -1,8 +1,10 @@
 # Segredos / config local
 .env
 .env_*
+projects.json
 
 # Estado de runtime
+.store.json
 .sessions.json
 bot.log
 

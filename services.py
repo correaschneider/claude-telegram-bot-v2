@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from claude_stream import RunSpec
 from config import Config
-from sessions import SessionStore
-from turn import DraftSink, RunningClaude, Turn
+from projects import ProjectRegistry
+from store import Conversation, ConversationStore
+from turn import RunningClaude, Turn
+
+if TYPE_CHECKING:
+    from aiogram import Bot
+
+    from permission_desk import PermissionDesk
 
 
 class ClaudeRunner(Protocol):
@@ -18,20 +24,39 @@ class ClaudeRunner(Protocol):
 
 @dataclass
 class ActiveTurn:
+    conv: Conversation
     turn: Turn
+    token: str  # identifica o turno pra bridge MCP
+    actor_id: int  # quem disparou (aprova permissões / recebe efêmera)
+    rules: list[str] = field(default_factory=list)  # auto-aprova (read-only + projeto)
+    can_prompt: bool = True  # False em grupo/guest: sem humano pra aprovar → nega
+    session_allow: list[str] = field(default_factory=list)  # "sempre" aprovado neste turno
     started_at: float = field(default_factory=time.monotonic)
 
 
 @dataclass
 class RuntimeState:
-    active: dict[int, ActiveTurn] = field(default_factory=dict)
-    yolo: set[int] = field(default_factory=set)
+    active: dict[str, ActiveTurn] = field(default_factory=dict)  # conv.key → turno
+    by_token: dict[str, ActiveTurn] = field(default_factory=dict)
+
+
+@dataclass
+class Bridge:
+    url: str
+    token: str
+    script: str  # caminho absoluto do mcp_bridge.py
+    python: str
 
 
 @dataclass
 class Services:
     cfg: Config
+    bot: Bot
+    bot_username: str
+    bot_id: int
+    projects: ProjectRegistry
+    store: ConversationStore
     runner: ClaudeRunner
-    sink: DraftSink
-    sessions: SessionStore
     state: RuntimeState
+    bridge: Bridge
+    desk: PermissionDesk

@@ -1,5 +1,5 @@
 """Núcleo de um turno: consome os eventos do Claude e mantém o rascunho vivo no
-Telegram (sendMessageDraft), depois envia a resposta definitiva. Só fala com portas."""
+Telegram (sendMessageDraft), depois entrega a resposta definitiva. Só fala com portas."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import asyncio
 import logging
 import time
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from claude_stream import Event, Exited, Init, Result, TextDelta, ToolDone, ToolStart
@@ -21,20 +21,46 @@ class RunningClaude(Protocol):
     def kill(self) -> None: ...
 
 
-class DraftSink(Protocol):
-    """Porta do Telegram: rascunho vivo e mensagem definitiva."""
-
-    async def draft(self, chat_id: int, draft_id: int, text: str) -> None: ...
-    async def send(self, chat_id: int, markdown: str) -> None: ...
-
-
 @dataclass
 class TurnOutcome:
-    text: str
+    text: str  # resposta principal (último trecho de texto)
+    progress: str  # trechos anteriores (entre ferramentas) — vira bloco colapsável
+    steps: int  # ferramentas executadas
+    footer: str
     session_id: str | None
     stopped: bool
     error: bool
     elapsed: float
+
+
+class DraftSink(Protocol):
+    """Porta do Telegram: rascunho vivo e entrega final."""
+
+    async def draft(
+        self, chat_id: int, thread_id: int | None, draft_id: int, text: str
+    ) -> None: ...
+    async def send(self, chat_id: int, thread_id: int | None, outcome: TurnOutcome) -> None: ...
+
+
+@dataclass
+class _Buffer:
+    segments: list[list[str]] = field(default_factory=lambda: [[]])
+    steps: int = 0
+
+    def append(self, text: str) -> None:
+        self.segments[-1].append(text)
+
+    def new_segment(self) -> None:
+        if self.segments[-1]:
+            self.segments.append([])
+
+    @property
+    def texts(self) -> list[str]:
+        return [t for seg in self.segments if (t := "".join(seg).strip())]
+
+    @property
+    def full(self) -> str:
+        return "\n\n".join(self.texts)
 
 
 class Turn:
@@ -42,6 +68,7 @@ class Turn:
         self,
         sink: DraftSink,
         chat_id: int,
+        thread_id: int | None,
         draft_id: int,
         *,
         interval: float,
@@ -50,14 +77,14 @@ class Turn:
     ) -> None:
         self._sink = sink
         self._chat = chat_id
+        self._thread = thread_id
         self._draft_id = draft_id
         self._interval = interval
         self._keepalive = keepalive
         self._max_chars = max_chars
 
-        self._buf: list[str] = []
+        self._buf = _Buffer()
         self._status = ""
-        self._need_sep = False
         self._dirty = False
         self._last_sent = 0.0
         self._stopped = False
@@ -66,7 +93,7 @@ class Turn:
 
     @property
     def text(self) -> str:
-        return "".join(self._buf)
+        return self._buf.full
 
     @property
     def draft_id(self) -> int:
@@ -76,6 +103,11 @@ class Turn:
         self._stopped = True
         if self._proc is not None:
             self._proc.kill()
+
+    def set_status(self, status: str) -> None:
+        """Linha de estado extra (ex.: aguardando aprovação). Vazio limpa."""
+        self._status = status
+        self._dirty = True
 
     # ---- rascunho ----
 
@@ -91,7 +123,7 @@ class Turn:
         async with self._flush_lock:
             self._dirty = False
             self._last_sent = time.monotonic()
-            await self._sink.draft(self._chat, self._draft_id, self.render())
+            await self._sink.draft(self._chat, self._thread, self._draft_id, self.render())
 
     async def _tick(self) -> None:
         while True:
@@ -103,15 +135,13 @@ class Turn:
 
     def _apply(self, ev: Event) -> None:
         if isinstance(ev, TextDelta):
-            if self._need_sep and self._buf and not self.text.endswith("\n"):
-                self._buf.append("\n\n")
-            self._need_sep = False
             self._buf.append(ev.text)
         elif isinstance(ev, ToolStart):
             self._status = f"🔧 {ev.name} · {ev.detail}" if ev.detail else f"🔧 {ev.name}"
         elif isinstance(ev, ToolDone):
             self._status = "⚠️ ferramenta falhou, seguindo…" if ev.is_error else ""
-            self._need_sep = True
+            self._buf.steps += 1
+            self._buf.new_segment()
         else:
             return
         self._dirty = True
@@ -144,33 +174,40 @@ class Turn:
 
         elapsed = time.monotonic() - started
         outcome = self._outcome(result, exited, session_id, elapsed)
-        await self._sink.send(self._chat, outcome.text)
+        await self._sink.send(self._chat, self._thread, outcome)
         return outcome
 
     def _outcome(
         self, result: Result | None, exited: Exited | None, session_id: str | None, elapsed: float
     ) -> TurnOutcome:
-        text = self.text.strip()
+        texts = self._buf.texts
+        steps = self._buf.steps
+
+        def out(text: str, *, progress: str = "", footer: str = "", stopped=False, error=False):
+            return TurnOutcome(text, progress, steps, footer, session_id, stopped, error, elapsed)
+
         if self._stopped:
-            body = "⏹ Interrompido." + (f"\n\n{text}" if text else "")
-            return TurnOutcome(body, session_id, True, False, elapsed)
+            partial = "\n\n".join(texts)
+            return out("⏹ Interrompido." + (f"\n\n{partial}" if partial else ""), stopped=True)
 
         if result is None:
             rc = exited.return_code if exited else None
             tail = (exited.stderr.strip()[-600:] if exited else "") or "(sem stderr)"
-            body = f"❌ Claude encerrou sem resultado (rc={rc}).\n```\n{tail}\n```"
-            return TurnOutcome(body, session_id, False, True, elapsed)
+            return out(f"❌ Claude encerrou sem resultado (rc={rc}).\n```\n{tail}\n```", error=True)
 
         if result.is_error:
-            body = f"❌ {result.text or 'erro sem detalhe'}"
-            return TurnOutcome(body, session_id, False, True, elapsed)
+            return out(f"❌ {result.text or 'erro sem detalhe'}", error=True)
 
-        body = text or result.text.strip() or "(resposta vazia)"
+        text = (texts[-1] if texts else "") or result.text.strip() or "(resposta vazia)"
+        progress = "\n\n".join(texts[:-1]) if len(texts) > 1 else ""
         footer = f"⏱ {format_elapsed(elapsed)}"
         if result.cost_usd is not None:
-            footer += f" · ${result.cost_usd:.2f}"
+            footer += f" · {result.cost_usd:.2f} USD"
         if result.num_turns:
             footer += f" · {result.num_turns} turnos"
         if result.permission_denials:
-            footer += f"\n🔒 {result.permission_denials} chamada(s) de ferramenta negada(s) — /yolo ou ajuste CLAUDE_ALLOWED_TOOLS"
-        return TurnOutcome(f"{body}\n\n{footer}", session_id, False, False, elapsed)
+            footer += (
+                f"\n🔒 {result.permission_denials} chamada(s) negada(s) por permissão"
+                " — aprove pelo botão, use /yolo ou ajuste allowed_tools"
+            )
+        return out(text, progress=progress, footer=footer)

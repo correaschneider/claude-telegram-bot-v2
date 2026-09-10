@@ -10,7 +10,7 @@ import logging
 import os
 import signal
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 log = logging.getLogger("claude-bot")
 
@@ -69,6 +69,12 @@ class RunSpec:
     allowed_tools: str
     add_dirs: tuple[str, ...]
     append_system_prompt: str
+    fork_session: bool = False
+    mcp_config: str | None = None  # JSON inline com os MCP servers extras
+    permission_prompt_tool: str | None = None  # ex.: mcp__tg__ask
+    permission_prompts_none: bool = False  # ninguém pode aprovar → nega em vez de esperar
+    settings_json: str | None = None  # --settings inline (ex.: regras ask que forçam o prompt)
+    env: dict[str, str] = field(default_factory=dict)
 
 
 def _tool_detail(name: str, inp: dict) -> str:
@@ -80,6 +86,8 @@ def _tool_detail(name: str, inp: dict) -> str:
         value = inp.get("pattern", "")
     elif name == "Agent":
         value = inp.get("description", "")
+    elif name.endswith("update_checklist"):
+        value = f"{len(inp.get('items') or [])} itens"
     else:
         value = json.dumps(inp, ensure_ascii=False) if inp else ""
     value = " ".join(str(value).split())
@@ -156,6 +164,8 @@ def build_args(claude_bin: str, spec: RunSpec) -> list[str]:
     ]
     if spec.session_id:
         args += ["--resume", spec.session_id]
+        if spec.fork_session:
+            args.append("--fork-session")
     if spec.yolo:
         args.append("--dangerously-skip-permissions")
     else:
@@ -163,6 +173,14 @@ def build_args(claude_bin: str, spec: RunSpec) -> list[str]:
             args += ["--permission-mode", spec.permission_mode]
         if spec.allowed_tools:
             args += ["--allowedTools", spec.allowed_tools]
+        if spec.permission_prompt_tool:
+            args += ["--permission-prompt-tool", spec.permission_prompt_tool]
+        elif spec.permission_prompts_none:
+            args += ["--permission-prompts", "none"]
+    if spec.mcp_config:
+        args += ["--mcp-config", spec.mcp_config]
+    if spec.settings_json:
+        args += ["--settings", spec.settings_json]
     for d in spec.add_dirs:
         args += ["--add-dir", d]
     # Prompt sempre posicional depois de `--`: texto começando com "-" quebraria o parser.
@@ -209,7 +227,14 @@ class SubprocessRunner:
 
     async def start(self, spec: RunSpec) -> ClaudeProcess:
         args = build_args(self._bin, spec)
-        log.info("claude start cwd=%s resume=%s yolo=%s", spec.cwd, spec.session_id, spec.yolo)
+        log.info(
+            "claude start cwd=%s resume=%s fork=%s yolo=%s prompt_tool=%s",
+            spec.cwd,
+            spec.session_id,
+            spec.fork_session,
+            spec.yolo,
+            spec.permission_prompt_tool,
+        )
         proc = await asyncio.create_subprocess_exec(
             *args,
             cwd=spec.cwd,
@@ -217,7 +242,7 @@ class SubprocessRunner:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             limit=STDOUT_LINE_LIMIT,
-            env={**os.environ, "CLAUDE_BOT_SKIP_HOOKS": "1"},
+            env={**os.environ, "CLAUDE_BOT_SKIP_HOOKS": "1", **spec.env},
             start_new_session=True,
         )
         return ClaudeProcess(proc)
