@@ -156,7 +156,8 @@ uv run pytest
 
 - [ ] Telegram Mini App: session dashboard, syntax-highlighted diffs and **biometric confirmation** for production deploys (needs a public HTTPS domain).
 - [ ] Ephemeral + guest mode in channels/communities.
-- [ ] Fine-tune the read-only/sensitive lists from real usage.
+- [ ] Fine-tune the read-only/sensitive lists from real usage (`/audit`).
+- [ ] Codex CLI as an alternative agent: the core is agent-agnostic; needs an `agents/codex.py` driver (`codex exec --json`, `resume`, MCP via `-c`). Button approval (F4) wouldn't port — `exec` has no external approval hook, only sandbox levels.
 
 ---
 
