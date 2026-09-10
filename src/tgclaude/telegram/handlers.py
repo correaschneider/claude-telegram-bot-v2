@@ -57,7 +57,15 @@ class AllowlistMiddleware(BaseMiddleware):
         if chat_id not in self._chats and user_id not in self._users:
             log.warning("update ignorado: chat=%s user=%s", chat_id, user_id)
             return None
-        log.info("update %s chat=%s user=%s", event.event_type, chat_id, user_id)
+        msg = event.message or event.edited_message or event.guest_message
+        kind = f"{event.event_type}/{msg.content_type}" if msg else event.event_type
+        log.info(
+            "update %s chat=%s user=%s thread=%s",
+            kind,
+            chat_id,
+            user_id,
+            msg.message_thread_id if msg else None,
+        )
         return await handler(event, data)
 
 

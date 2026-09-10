@@ -54,7 +54,7 @@ uv run pytest                      # 19 testes, sem token nem rede — confirma 
    - **Threaded Mode** → ON — tópicos em chat privado (`/new`, `/fork`, deep links).
      Deixe *"Disallow users to create new threads"* OFF.
    - **Guest Chat Mode** → ON — só se quiser usar o bot em grupos sem adicioná-lo como membro.
-   - *Allow Groups* / *Group Privacy* podem ficar como estão (o bot só reage a menção/reply).
+   - *Group Privacy*: com ele **ligado** (default) o Telegram entrega ao bot só **comandos** (`/ask …`) e **replies** a mensagens dele — menção `@bot` **não chega**. Pra menção funcionar, desligue e **remova/adicione o bot de novo** no grupo (ou faça o bot admin).
 3. A propagação leva **~5 min**. Confira:
    ```bash
    curl -s "https://api.telegram.org/bot<TOKEN>/getMe" | grep -o '"has_topics_enabled":[a-z]*\|"supports_guest_queries":[a-z]*'
@@ -293,4 +293,5 @@ systemctl --user restart whisperx-server
 | áudio: `whisperx exit 1 … HF_HUB_OFFLINE` | primeira execução precisa baixar o modelo com rede |
 | rascunho some após ~30 s parado | comportamento do Telegram; o bot reenvia a cada `DRAFT_KEEPALIVE_SECONDS` — se o Claude está mudo há mais que isso, veja o journal |
 | `permission_denials` no rodapé | Claude tentou algo fora da allowlist sem aprovador (grupo/job) — ajuste `allowed_tools` |
+| menção `@bot` no grupo não chega (nem aparece no log) | *Group Privacy* ligado: o Telegram não entrega menções. Use `/ask …` ou reply, ou desligue o privacy e re-adicione o bot |
 | mudou o `.env` e nada aconteceu | o `.env` é lido só no start: `systemctl --user restart claude-telegram-bot-v2` |

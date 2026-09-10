@@ -68,7 +68,7 @@ Bot API 10.x.
 | 📎 **Arquivos** | png/pdf/mp3/mp4 citados por caminho absoluto chegam sozinhos; tool `send_file` entrega qualquer arquivo. |
 | ⏰ **Agendamentos** | Tool `schedule` (cron de 5 campos ou `every_seconds`): dispara no tópico de origem com sessão própria. `/jobs`, `/unschedule`. |
 | 🔗 **Deep link** | `/link habilis` ou `/link HT-123` → `t.me/<bot>?start=…` abre um tópico já no projeto certo. |
-| 👥 **Grupos / guest mode** | Menção ou reply em grupos autorizados (mesmo sem ser membro, via guest mode): resposta **efêmera** só pra quem perguntou (`#todos` = pública). Em grupo nunca há aprovação: fora da allowlist é negado. |
+| 👥 **Grupos / guest mode** | Em grupos autorizados, dispara por **reply** a uma mensagem do bot, por **`/ask <pergunta>`** ou por menção (`@bot` só chega se o *Group Privacy* estiver desligado — o Telegram não entrega menções em privacy mode). Sem ser membro, via guest mode. Resposta **efêmera** só pra quem perguntou (`#todos` = pública). Em grupo nunca há aprovação: fora da allowlist é negado. |
 
 ## 🛡️ Política de permissão
 

@@ -24,14 +24,17 @@ def _prompt_from(message: Message, services: Services) -> tuple[str, bool] | Non
     """(prompt, público) se a mensagem é pra este bot; None caso contrário."""
     text = message.text or message.caption or ""
     mention = re.compile(rf"@{re.escape(services.bot_username)}\b", re.I)
+    # Com Group Privacy ligado (default) o Telegram NÃO entrega menções — só comandos e
+    # replies ao bot. Por isso `/ask …` (ou `/claude …`) também dispara.
+    command = re.compile(rf"^/(ask|claude)(?:@{re.escape(services.bot_username)})?\b", re.I)
     replied = bool(
         message.reply_to_message
         and message.reply_to_message.from_user
         and message.reply_to_message.from_user.id == services.bot_id
     )
-    if not (mention.search(text) or replied or message.guest_query_id):
+    if not (mention.search(text) or command.match(text) or replied or message.guest_query_id):
         return None
-    prompt = mention.sub("", text).strip()
+    prompt = mention.sub("", command.sub("", text, count=1)).strip()
     tag = services.cfg.group_public_tag
     public = bool(tag) and tag in prompt
     if public:
