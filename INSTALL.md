@@ -54,7 +54,7 @@ uv run pytest                      # 19 testes, sem token nem rede — confirma 
    - **Threaded Mode** → ON — tópicos em chat privado (`/new`, `/fork`, deep links).
      Deixe *"Disallow users to create new threads"* OFF.
    - **Guest Chat Mode** → ON — só se quiser usar o bot em grupos sem adicioná-lo como membro.
-   - *Group Privacy*: com ele **ligado** (default) o Telegram entrega ao bot só **comandos** (`/ask …`) e **replies** a mensagens dele — menção `@bot` **não chega**. Pra menção funcionar, desligue e **remova/adicione o bot de novo** no grupo (ou faça o bot admin). **Resposta efêmera** (visível só pra quem perguntou) também exige o bot como **admin** do grupo; sem isso o bot responde em público, como reply.
+   - *Group Privacy* pode ficar ligado — o que ele bloqueia e como contornar está na seção 3.2.
 3. A propagação leva **~5 min**. Confira:
    ```bash
    curl -s "https://api.telegram.org/bot<TOKEN>/getMe" | grep -o '"has_topics_enabled":[a-z]*\|"supports_guest_queries":[a-z]*'
@@ -68,14 +68,44 @@ Os comandos do menu (`/status`, `/new`…) o próprio bot registra ao subir (`se
 
 ### 3.1 Descobrir o seu `chat_id`
 
-Mande qualquer mensagem pro bot e:
+**Com o bot parado**, mande qualquer mensagem pra ele e:
 
 ```bash
 curl -s "https://api.telegram.org/bot<TOKEN>/getUpdates" | grep -o '"chat":{"id":[-0-9]*'
 ```
 
-Chat privado = id positivo (= seu user id). Grupo = id negativo (`-100…`). Use os dois em
-`ALLOWED_CHAT_IDS`; o bot só atende quem está lá.
+**Com o bot rodando** o `getUpdates` dá conflito com o polling — use o log: toda mensagem de
+chat não autorizado é registrada com o id:
+
+```bash
+journalctl --user -u claude-telegram-bot-v2 -n 50 --no-pager -o cat | grep "update ignorado"
+# → update ignorado: chat=-1003922999755 user=8778203590
+```
+
+Chat privado = id positivo (= seu user id). Grupo = id negativo (`-100…`, muda se um grupo
+comum virar supergrupo). Use os dois em `ALLOWED_CHAT_IDS`; o bot só atende quem está lá.
+
+### 3.2 Grupos
+
+1. Adicione o bot ao grupo e **promova-o a admin** (nenhum direito específico é necessário).
+   Sem admin: o Telegram não entrega menções (*Group Privacy*) e recusa resposta efêmera
+   (`BOT_NOT_ADMIN`) — o bot ainda funciona por `/ask` e reply, respondendo em público.
+2. Pegue o id do grupo (3.1) e ponha em `ALLOWED_CHAT_IDS`. Quem pode **disparar** o bot no
+   grupo é quem está em `ALLOWED_USER_IDS` (default: só você); os demais são ignorados em silêncio.
+3. Opcional: `"chats": [<id>]` no projeto certo do `projects.json` — senão o grupo conversa no
+   projeto default.
+4. `systemctl --user restart claude-telegram-bot-v2`.
+
+| Gatilho | Funciona com… |
+|---|---|
+| `/ask <pergunta>` (ou `/claude …`) | sempre |
+| **reply** a uma mensagem do bot | sempre |
+| menção `@bot …` | bot admin, **ou** *Group Privacy* desligado + bot removido e re-adicionado |
+| menção sem o bot ser membro | *Guest Chat Mode* ligado (responde uma vez, via `answerGuestQuery`) |
+
+A resposta é **efêmera** (só quem perguntou vê) quando o bot é admin; `#todos` na mensagem
+torna pública. Em grupo **nunca** há card de aprovação: o que não estiver em `allowed_tools`
+do projeto é negado (e aparece no rodapé como `permission_denials`).
 
 ## 4. Configuração
 
