@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from claude_stream import Event, Exited, Init, Result, TextDelta, ToolDone, ToolStart
-from formatting import format_elapsed
+from formatting import fmt_tokens, format_elapsed
 
 log = logging.getLogger("claude-bot")
 
@@ -74,6 +74,7 @@ class Turn:
         interval: float,
         keepalive: float,
         max_chars: int,
+        show_cost: bool = False,
     ) -> None:
         self._sink = sink
         self._chat = chat_id
@@ -82,6 +83,7 @@ class Turn:
         self._interval = interval
         self._keepalive = keepalive
         self._max_chars = max_chars
+        self._show_cost = show_cost
 
         self._buf = _Buffer()
         self._status = ""
@@ -201,7 +203,11 @@ class Turn:
         text = (texts[-1] if texts else "") or result.text.strip() or "(resposta vazia)"
         progress = "\n\n".join(texts[:-1]) if len(texts) > 1 else ""
         footer = f"⏱ {format_elapsed(elapsed)}"
-        if result.cost_usd is not None:
+        if result.input_tokens or result.output_tokens:
+            footer += (
+                f" · ↓{fmt_tokens(result.input_tokens)} ↑{fmt_tokens(result.output_tokens)} tokens"
+            )
+        if self._show_cost and result.cost_usd is not None:
             footer += f" · {result.cost_usd:.2f} USD"
         if result.num_turns:
             footer += f" · {result.num_turns} turnos"

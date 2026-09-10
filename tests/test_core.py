@@ -29,6 +29,7 @@ from claude_stream import (  # noqa: E402
 from formatting import (  # noqa: E402
     checklist_markdown,
     chunk_markdown,
+    fmt_tokens,
     md_to_html,
     rich_markdown,
 )
@@ -125,8 +126,14 @@ def test_parse_line():
         "total_cost_usd": 0.5,
         "num_turns": 2,
         "permission_denials": [{"tool_name": "Bash"}],
+        "usage": {
+            "input_tokens": 4,
+            "cache_creation_input_tokens": 55120,
+            "cache_read_input_tokens": 98659,
+            "output_tokens": 163,
+        },
     }
-    assert parse_line(json.dumps(result)) == [Result("fim", False, "abc", 0.5, 2, 1)]
+    assert parse_line(json.dumps(result)) == [Result("fim", False, "abc", 0.5, 2, 1, 153783, 163)]
     assert parse_line(json.dumps({"type": "result", "subtype": "error_during_execution"}))[
         0
     ].is_error
@@ -175,7 +182,7 @@ def test_turn_streams_and_finalizes():
         ToolDone(False),
         TextDelta("Pronto: 2 arquivos."),
         None,
-        Result("Pronto.", False, "sess-1", 0.12, 2, 0),
+        Result("Pronto.", False, "sess-1", 0.12, 2, 0, 153783, 163),
     ]
     outcome = asyncio.run(make_turn(sink).run(FakeProc(script)))
 
@@ -185,7 +192,12 @@ def test_turn_streams_and_finalizes():
     assert outcome.session_id == "sess-1" and not outcome.error and not outcome.stopped
     assert outcome.text == "Pronto: 2 arquivos." and outcome.progress == "Vou olhar."
     assert outcome.steps == 1
-    assert "⏱" in outcome.footer and "0.12 USD" in outcome.footer and "2 turnos" in outcome.footer
+    assert (
+        "⏱" in outcome.footer
+        and "↓153.8k ↑163 tokens" in outcome.footer
+        and "2 turnos" in outcome.footer
+    )
+    assert "USD" not in outcome.footer
     assert "🔒" not in outcome.footer
     assert sink.sent == [outcome]
 
@@ -257,6 +269,22 @@ def test_turn_errors_and_denials():
     sink = FakeSink()
     asyncio.run(make_turn(sink).run(FakeProc([Init("s")])))
     assert sink.sent[0].text.startswith("❌ Claude encerrou sem resultado")
+
+
+def test_footer_with_cost():
+    sink = FakeSink()
+    turn = Turn(
+        sink, CHAT, THREAD, DRAFT, interval=0.01, keepalive=1, max_chars=100, show_cost=True
+    )
+    asyncio.run(
+        turn.run(
+            FakeProc([Init("s"), TextDelta("x"), Result("x", False, "s", 0.12, 1, 0, 1500, 20)])
+        )
+    )
+    assert "↓1.5k ↑20 tokens · 0.12 USD" in sink.sent[0].footer, sink.sent[0].footer
+    assert (
+        fmt_tokens(999) == "999" and fmt_tokens(1000) == "1k" and fmt_tokens(2_450_000) == "2.45M"
+    )
 
 
 def test_render_sliding_window():
@@ -459,8 +487,11 @@ def test_mcp_bridge_protocol():
     assert decision == {"behavior": "allow", "updatedInput": {"command": "ls"}}
     assert r[4]["result"]["content"][0]["text"] == "checklist criada"
     assert r[5]["result"] == {}
-    assert received[0]["turn"] == "t1" and received[0]["tool_name"] == "Bash"
-    assert received[1]["items"] == [{"text": "a"}]
+    # os dois tools/call rodam em threads na bridge: a ordem de chegada no HTTP varia
+    ask_payload = next(p for p in received if "tool_name" in p)
+    checklist_payload = next(p for p in received if "items" in p)
+    assert ask_payload["turn"] == "t1" and ask_payload["tool_name"] == "Bash"
+    assert checklist_payload["items"] == [{"text": "a"}]
 
 
 if __name__ == "__main__":

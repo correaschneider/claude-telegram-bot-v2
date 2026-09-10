@@ -34,6 +34,14 @@ def format_elapsed(seconds: float) -> str:
 # ---- HTML (fallback / mensagens simples) ----
 
 
+def fmt_tokens(n: int) -> str:
+    if n < 1000:
+        return str(n)
+    if n < 1_000_000:
+        return f"{n / 1000:.1f}".rstrip("0").rstrip(".") + "k"
+    return f"{n / 1_000_000:.2f}".rstrip("0").rstrip(".") + "M"
+
+
 def _inline(text: str) -> str:
     text = html.escape(text, quote=False)
     text = _INLINE_CODE.sub(r"<code>\1</code>", text)

@@ -48,6 +48,8 @@ class Result:
     cost_usd: float | None
     num_turns: int | None
     permission_denials: int
+    input_tokens: int = 0  # inclui cache (criação + leitura)
+    output_tokens: int = 0
 
 
 @dataclass(frozen=True)
@@ -137,6 +139,7 @@ def parse_line(line: str) -> list[Event]:
         return []
 
     if kind == "result":
+        usage = ev.get("usage") or {}
         return [
             Result(
                 text=ev.get("result") or "",
@@ -145,6 +148,15 @@ def parse_line(line: str) -> list[Event]:
                 cost_usd=ev.get("total_cost_usd"),
                 num_turns=ev.get("num_turns"),
                 permission_denials=len(ev.get("permission_denials") or []),
+                input_tokens=sum(
+                    int(usage.get(k) or 0)
+                    for k in (
+                        "input_tokens",
+                        "cache_creation_input_tokens",
+                        "cache_read_input_tokens",
+                    )
+                ),
+                output_tokens=int(usage.get("output_tokens") or 0),
             )
         ]
 

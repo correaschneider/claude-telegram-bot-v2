@@ -45,6 +45,7 @@ class Config:
     draft_keepalive: float
     draft_max_chars: int
     rich_messages: bool
+    footer_cost: bool  # além dos tokens, mostrar custo em USD no rodapé
 
     bridge_host: str
     bridge_port: int
@@ -81,6 +82,7 @@ class Config:
             draft_keepalive=float(os.environ.get("DRAFT_KEEPALIVE_SECONDS", "10")),
             draft_max_chars=int(os.environ.get("DRAFT_MAX_CHARS", "3500")),
             rich_messages=_bool(os.environ.get("RICH_MESSAGES"), True),
+            footer_cost=_bool(os.environ.get("FOOTER_COST"), False),
             bridge_host=os.environ.get("BRIDGE_HOST", "127.0.0.1"),
             bridge_port=int(os.environ.get("BRIDGE_PORT", "0")),
             mcp_tool_timeout_ms=int(os.environ.get("MCP_TOOL_TIMEOUT_MS", str(24 * 3600 * 1000))),

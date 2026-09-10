@@ -84,6 +84,7 @@ async def run_turn(
         interval=cfg.draft_interval,
         keepalive=cfg.draft_keepalive,
         max_chars=cfg.draft_max_chars,
+        show_cost=cfg.footer_cost,
     )
     active = ActiveTurn(
         conv=conv,
