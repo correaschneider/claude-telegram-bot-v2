@@ -1,122 +1,125 @@
-<p align="right">🇧🇷 Português · <a href="INSTALL.en.md">🇺🇸 English</a></p>
+<p align="right">🇺🇸 English · <a href="INSTALL.pt-BR.md">🇧🇷 Português</a></p>
 
-# Instalação
+# Installation
 
-Guia completo: dependências, bot no Telegram, configuração, execução como serviço,
-WhisperX (voz), atualização e troubleshooting. O [README](README.md) explica o que o bot faz.
+Complete guide: dependencies, the Telegram bot, configuration, running as a service,
+WhisperX (voice), updating and troubleshooting. The [README](README.md) explains what the
+bot does.
 
-## 1. Dependências
+## 1. Dependencies
 
-### Obrigatórias
+### Required
 
-| O quê | Versão | Por quê |
+| What | Version | Why |
 |---|---|---|
-| **Linux** com `systemd --user` | — | os dois serviços (bot e WhisperX) são units de usuário |
-| **Python** | ≥ 3.12 | `uv` baixa sozinho se faltar |
-| [**uv**](https://docs.astral.sh/uv/) | ≥ 0.11 | cria o venv e instala pelo `uv.lock` (versões exatas) |
-| **Claude Code CLI** (`claude`) | ≥ 2.1.259 | é quem executa os turnos (`claude -p --output-format stream-json`); `--permission-prompts` e `--fork-session` precisam dessa versão |
-| **git** | — | clonar/atualizar |
+| **Linux** with `systemd --user` | — | both services (bot and WhisperX) are user units |
+| **Python** | ≥ 3.12 | `uv` downloads it if missing |
+| [**uv**](https://docs.astral.sh/uv/) | ≥ 0.11 | creates the venv and installs from `uv.lock` (exact versions) |
+| **Claude Code CLI** (`claude`) | ≥ 2.1.259 | runs the turns (`claude -p --output-format stream-json`); `--permission-prompts` and `--fork-session` need this version |
+| **git** | — | clone/update |
 
-O `claude` precisa estar **logado no mesmo usuário que roda o serviço** (`claude --version` e
-um `claude -p "oi"` no terminal têm que funcionar). Os servidores MCP configurados nesse
-usuário (ClickUp, Atlassian, Notion…) ficam disponíveis pro bot automaticamente; basta
-liberar em `allowed_tools` (ex.: `mcp__clickup`).
+`claude` must be **logged in as the same user that runs the service** (`claude --version`
+and a `claude -p "hi"` in the terminal must work). MCP servers configured for that user
+(ClickUp, Atlassian, Notion…) are automatically available to the bot; just allow them in
+`allowed_tools` (e.g. `mcp__clickup`).
 
-### Opcionais (só pra mensagem de voz)
+### Optional (voice messages only)
 
-| O quê | Por quê |
+| What | Why |
 |---|---|
-| **GPU NVIDIA** + driver com CUDA 12.x | WhisperX `large-v3` em float16 usa ~3,9 GB de VRAM; em CPU funciona, mas lento |
-| **WhisperX** num venv próprio (`~/whisperx/.venv`) | transcrição (seção 6) |
-| **ffmpeg** | o WhisperX usa pra decodificar o `.ogg` do Telegram |
-| **`flock`** (util-linux) | serializa transcrições pra não estourar VRAM; se não existir, roda sem lock |
+| **NVIDIA GPU** + driver with CUDA 12.x | WhisperX `large-v3` in float16 uses ~3.9 GB of VRAM; CPU works, but slowly |
+| **WhisperX** in its own venv (`~/whisperx/.venv`) | transcription (section 6) |
+| **ffmpeg** | WhisperX uses it to decode Telegram's `.ogg` |
+| **`flock`** (util-linux) | serializes transcriptions so they don't blow the VRAM; without it, runs unlocked |
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh     # uv
-curl -fsSL https://claude.ai/install.sh | bash       # Claude Code (depois: claude  → login)
+curl -fsSL https://claude.ai/install.sh | bash       # Claude Code (then: claude → login)
 sudo apt install -y ffmpeg util-linux git
 ```
 
-## 2. Clonar e instalar
+## 2. Clone and install
 
 ```bash
 git clone git@github.com:correaschneider/claude-telegram-bot-v2.git
 cd claude-telegram-bot-v2
-uv sync                       # cria .venv, instala o pacote tgclaude (editável) e as deps (+ ruff, pytest)
-uv run pytest                      # 19 testes, sem token nem rede — confirma que o ambiente está são
+uv sync                       # creates .venv, installs the tgclaude package (editable) and deps (+ ruff, pytest)
+uv run pytest                      # 19 tests, no token, no network — confirms the environment is sane
 ```
 
-## 3. Bot no Telegram (@BotFather)
+## 3. The Telegram bot (@BotFather)
 
-1. `/newbot` → nome e username → guarde o **token**.
-2. Abra o **Mini App do BotFather** (botão ao lado da caixa de texto — as opções abaixo **não
-   aparecem** no menu de texto do `/mybots`) → seu bot → **Settings**:
-   - **Threaded Mode** → ON — tópicos em chat privado (`/new`, `/fork`, deep links).
-     Deixe *"Disallow users to create new threads"* OFF.
-   - **Guest Chat Mode** → ON — só se quiser usar o bot em grupos sem adicioná-lo como membro.
-   - *Group Privacy* pode ficar ligado — o que ele bloqueia e como contornar está na seção 3.2.
-3. A propagação leva **~5 min**. Confira:
+1. `/newbot` → name and username → keep the **token**.
+2. Open the **BotFather Mini App** (button next to the text box — the options below are
+   **not** in the `/mybots` text menu) → your bot → **Settings**:
+   - **Threaded Mode** → ON — topics in private chats (`/new`, `/fork`, deep links).
+     Leave *"Disallow users to create new threads"* OFF.
+   - **Guest Chat Mode** → ON — only if you want to use the bot in groups without adding it as a member.
+   - *Group Privacy* can stay on — what it blocks and how to work around it is in section 3.2.
+3. Propagation takes **~5 min**. Check:
    ```bash
    curl -s "https://api.telegram.org/bot<TOKEN>/getMe" | grep -o '"has_topics_enabled":[a-z]*\|"supports_guest_queries":[a-z]*'
    ```
-   Enquanto estiver `false`, `/new` responde *"the chat is not a forum"*.
+   While it's `false`, `/new` answers *"the chat is not a forum"*.
 
-> Ligar tópicos faz o Telegram reter 15% de compras em **Stars** dentro do bot. Irrelevante
-> pra um bot pessoal, mas é por isso que vem desligado.
+> Enabling topics makes Telegram withhold 15% of **Stars** purchases inside the bot.
+> Irrelevant for a personal bot, but that's why it ships disabled.
 
-Os comandos do menu (`/status`, `/new`…) o próprio bot registra ao subir (`setMyCommands`).
+The menu commands (`/status`, `/new`…) are registered by the bot itself on startup
+(`setMyCommands`).
 
-### 3.1 Descobrir o seu `chat_id`
+### 3.1 Find your `chat_id`
 
-**Com o bot parado**, mande qualquer mensagem pra ele e:
+**With the bot stopped**, send it any message and:
 
 ```bash
 curl -s "https://api.telegram.org/bot<TOKEN>/getUpdates" | grep -o '"chat":{"id":[-0-9]*'
 ```
 
-**Com o bot rodando** o `getUpdates` dá conflito com o polling — use o log: toda mensagem de
-chat não autorizado é registrada com o id:
+**With the bot running**, `getUpdates` conflicts with the polling — use the log: every message
+from an unauthorized chat is logged with its id:
 
 ```bash
 journalctl --user -u claude-telegram-bot-v2 -n 50 --no-pager -o cat | grep "update ignorado"
 # → update ignorado: chat=-1003922999755 user=8778203590
 ```
 
-Chat privado = id positivo (= seu user id). Grupo = id negativo (`-100…`, muda se um grupo
-comum virar supergrupo). Use os dois em `ALLOWED_CHAT_IDS`; o bot só atende quem está lá.
+Private chat = positive id (= your user id). Group = negative id (`-100…`; it changes when a
+plain group becomes a supergroup). Put both in `ALLOWED_CHAT_IDS`; the bot only serves what's
+listed there.
 
-### 3.2 Grupos
+### 3.2 Groups
 
-1. Adicione o bot ao grupo e **promova-o a admin** (nenhum direito específico é necessário).
-   Sem admin: o Telegram não entrega menções (*Group Privacy*) e recusa resposta efêmera
-   (`BOT_NOT_ADMIN`) — o bot ainda funciona por `/ask` e reply, respondendo em público.
-2. Pegue o id do grupo (3.1) e ponha em `ALLOWED_CHAT_IDS`. Quem pode **disparar** o bot no
-   grupo é quem está em `ALLOWED_USER_IDS` (default: só você); os demais são ignorados em silêncio.
-3. Opcional: `"chats": [<id>]` no projeto certo do `projects.json` — senão o grupo conversa no
-   projeto default.
+1. Add the bot to the group and **promote it to admin** (no specific right is needed).
+   Without admin: Telegram doesn't deliver mentions (*Group Privacy*) and refuses ephemeral
+   replies (`BOT_NOT_ADMIN`) — the bot still works via `/ask` and replies, answering publicly.
+2. Get the group id (3.1) and add it to `ALLOWED_CHAT_IDS`. Who may **trigger** the bot in the
+   group is whoever is in `ALLOWED_USER_IDS` (default: only you); everyone else is silently ignored.
+3. Optional: `"chats": [<id>]` in the right project of `projects.json` — otherwise the group
+   talks to the default project.
 4. `systemctl --user restart claude-telegram-bot-v2`.
 
-| Gatilho | Funciona com… |
+| Trigger | Works with… |
 |---|---|
-| `/ask <pergunta>` (ou `/claude …`) | sempre |
-| **reply** a uma mensagem do bot | sempre |
-| menção `@bot …` | bot admin, **ou** *Group Privacy* desligado + bot removido e re-adicionado |
-| menção sem o bot ser membro | *Guest Chat Mode* ligado (responde uma vez, via `answerGuestQuery`) |
+| `/ask <question>` (or `/claude …`) | always |
+| **reply** to a bot message | always |
+| `@bot …` mention | bot as admin, **or** *Group Privacy* off + bot removed and re-added |
+| mention without the bot being a member | *Guest Chat Mode* on (answers once, via `answerGuestQuery`) |
 
-A resposta é **efêmera** (só quem perguntou vê) quando o bot é admin; `#todos` na mensagem
-torna pública. Em grupo **nunca** há card de aprovação: o que não estiver em `allowed_tools`
-do projeto é negado (e aparece no rodapé como `permission_denials`).
+The answer is **ephemeral** (only the asker sees it) when the bot is an admin; `#todos` in the
+message makes it public. Groups **never** get an approval card: anything not in the project's
+`allowed_tools` is denied (and shows up in the footer as `permission_denials`).
 
-### 3.3 Canais
+### 3.3 Channels
 
-O bot só entra em canal como **admin** (com direito de postar) e recebe os posts como
-`channel_post`. Post não tem autor, então a autorização é só pelo **id do canal** em
-`ALLOWED_CHAT_IDS` (pegue pelo journal, como em 3.1). Um post com `/ask <pergunta>` ou menção
-`@bot` dispara um turno e a resposta vem como **post público em reply** ao original — em canal
-não existe efêmera nem rascunho. Comentários no grupo de discussão vinculado seguem a regra de
-grupo (3.2). Sem card de aprovação: o que não estiver em `allowed_tools` é negado.
+A bot can only join a channel as an **admin** (with the right to post) and receives posts as
+`channel_post`. Posts have no author, so authorization is only by the **channel id** in
+`ALLOWED_CHAT_IDS` (get it from the journal, as in 3.1). A post with `/ask <question>` or a
+`@bot` mention triggers a turn and the answer comes as a **public post replying** to the
+original — channels have no ephemeral messages or drafts. Comments in the linked discussion
+group follow the group rules (3.2). No approval card: anything not in `allowed_tools` is denied.
 
-## 4. Configuração
+## 4. Configuration
 
 ### 4.1 `.env`
 
@@ -124,31 +127,31 @@ grupo (3.2). Sem card de aprovação: o que não estiver em `allowed_tools` é n
 cp .env.example .env && chmod 600 .env
 ```
 
-| Variável | Obrigatória | Default | Notas |
+| Variable | Required | Default | Notes |
 |---|---|---|---|
-| `TELEGRAM_TOKEN` | ✅ | — | do BotFather |
-| `ALLOWED_CHAT_IDS` | ✅ | — | csv de chats atendidos (privados e grupos) |
-| `ALLOWED_USER_IDS` | | ids positivos de `ALLOWED_CHAT_IDS` | quem pode disparar em grupo/guest e **aprovar permissões** |
-| `WORKSPACE` | ✅ | — | cwd quando não há `projects.json` |
-| `PROJECTS_FILE` | | `./projects.json` | registry de projetos (4.2) |
-| `CLAUDE_BIN` | | `claude` | caminho/wrapper do CLI |
-| `CLAUDE_PERMISSION_MODE` | | `acceptEdits` | usado quando o projeto não define |
-| `CLAUDE_ALLOWED_TOOLS` | | vazio | idem; sintaxe do `--allowedTools` (`Read Edit Bash(git:*) mcp__clickup`) |
-| `CLAUDE_ADD_DIRS` | | vazio | `--add-dir` extras, csv |
-| `CLAUDE_APPEND_SYSTEM_PROMPT` | | prompt embutido | substitui o texto que ensina as tools do Telegram — só mude sabendo o que faz |
-| `STORE_FILE` · `JOBS_FILE` | | `./.store.json` · `./.jobs.json` | conversas/sessões e agendamentos |
-| `DEFAULT_TZ` | | `America/Sao_Paulo` | fuso dos agendamentos |
-| `SESSION_TTL_SECONDS` | | `21600` (6 h) | sessão parada além disso reseta |
-| `YOLO_TTL_SECONDS` | | `3600` | duração padrão do `/yolo` |
-| `DRAFT_INTERVAL_SECONDS` · `DRAFT_KEEPALIVE_SECONDS` · `DRAFT_MAX_CHARS` | | `1.5` · `10` · `3500` | ritmo do rascunho vivo |
-| `RICH_MESSAGES` | | `true` | `false` = só HTML |
-| `FOOTER_COST` | | `false` | mostra USD além dos tokens no rodapé |
-| `GROUP_PUBLIC_TAG` | | `#todos` | em grupo, torna a resposta pública (senão é efêmera) |
-| `BRIDGE_HOST` · `BRIDGE_PORT` | | `127.0.0.1` · `0` (aleatória) | HTTP loopback da bridge MCP |
-| `MCP_TOOL_TIMEOUT_MS` | | `86400000` (24 h) | quanto o Claude espera uma aprovação/resposta sua |
-| `WHISPERX_SERVER_URL` | | `http://127.0.0.1:8765` | servidor residente (seção 6); vazio = só CLI |
-| `WHISPERX_BIN` · `WHISPERX_MODEL` · `WHISPERX_DEVICE` · `WHISPERX_COMPUTE_TYPE` · `WHISPERX_LANGUAGE` · `WHISPERX_BATCH` · `WHISPERX_LOCK` | | `~/.local/bin/whisperx-cli` · `large-v3` · `cuda` · `float16` · `pt` · `8` · `/tmp/whisperx-pipeline.lock` | CLI de fallback |
-| `AUDIO_TMP_DIR` · `IMAGE_TMP_DIR` | | `/tmp/telegram-audio` · `/tmp/telegram-images` | downloads (áudio é apagado após transcrever; imagem fica pra follow-up) |
+| `TELEGRAM_TOKEN` | ✅ | — | from BotFather |
+| `ALLOWED_CHAT_IDS` | ✅ | — | csv of served chats (private and groups) |
+| `ALLOWED_USER_IDS` | | positive ids from `ALLOWED_CHAT_IDS` | who may trigger turns in groups/guest mode and **approve permissions** |
+| `WORKSPACE` | ✅ | — | cwd when there is no `projects.json` |
+| `PROJECTS_FILE` | | `./projects.json` | project registry (4.2) |
+| `CLAUDE_BIN` | | `claude` | CLI path/wrapper |
+| `CLAUDE_PERMISSION_MODE` | | `acceptEdits` | used when the project doesn't define one |
+| `CLAUDE_ALLOWED_TOOLS` | | empty | same; `--allowedTools` syntax (`Read Edit Bash(git:*) mcp__clickup`) |
+| `CLAUDE_ADD_DIRS` | | empty | extra `--add-dir`, csv |
+| `CLAUDE_APPEND_SYSTEM_PROMPT` | | built-in prompt | replaces the text that teaches Claude the Telegram tools — change only if you know what you're doing |
+| `STORE_FILE` · `JOBS_FILE` | | `./.store.json` · `./.jobs.json` | conversations/sessions and schedules |
+| `DEFAULT_TZ` | | `America/Sao_Paulo` | timezone for schedules |
+| `SESSION_TTL_SECONDS` | | `21600` (6 h) | an idle session resets after this |
+| `YOLO_TTL_SECONDS` | | `3600` | default `/yolo` duration |
+| `DRAFT_INTERVAL_SECONDS` · `DRAFT_KEEPALIVE_SECONDS` · `DRAFT_MAX_CHARS` | | `1.5` · `10` · `3500` | live-draft pacing |
+| `RICH_MESSAGES` | | `true` | `false` = HTML only |
+| `FOOTER_COST` | | `false` | shows USD besides tokens in the footer |
+| `GROUP_PUBLIC_TAG` | | `#todos` | in groups, makes the answer public (otherwise ephemeral) |
+| `BRIDGE_HOST` · `BRIDGE_PORT` | | `127.0.0.1` · `0` (random) | MCP bridge loopback HTTP |
+| `MCP_TOOL_TIMEOUT_MS` | | `86400000` (24 h) | how long Claude waits for your approval/answer |
+| `WHISPERX_SERVER_URL` | | `http://127.0.0.1:8765` | resident server (section 6); empty = CLI only |
+| `WHISPERX_BIN` · `WHISPERX_MODEL` · `WHISPERX_DEVICE` · `WHISPERX_COMPUTE_TYPE` · `WHISPERX_LANGUAGE` · `WHISPERX_BATCH` · `WHISPERX_LOCK` | | `~/.local/bin/whisperx-cli` · `large-v3` · `cuda` · `float16` · `pt` · `8` · `/tmp/whisperx-pipeline.lock` | fallback CLI |
+| `AUDIO_TMP_DIR` · `IMAGE_TMP_DIR` | | `/tmp/telegram-audio` · `/tmp/telegram-images` | downloads (audio is deleted after transcription; images stay for follow-ups) |
 
 ### 4.2 `projects.json`
 
@@ -170,71 +173,72 @@ cp projects.example.json projects.json
 }
 ```
 
-| Campo | Efeito |
+| Field | Effect |
 |---|---|
-| `path` | `cwd` do Claude (carrega o `CLAUDE.md` de lá) |
-| `default` | projeto das conversas sem escolha explícita |
-| `allowed_tools` | auto-aprovados **sem perguntar** (exceto comando sensível — ver README, "Política de permissão") |
-| `permission_mode` · `add_dirs` | sobrescrevem os defaults do `.env` |
-| `tasks` | prefixos de task: `/link HT-123` ou deep link `t:HT-123` caem neste projeto |
-| `chats` | grupos que conversam neste projeto por padrão |
+| `path` | Claude's `cwd` (loads the `CLAUDE.md` from there) |
+| `default` | project for conversations without an explicit choice |
+| `allowed_tools` | auto-approved **without asking** (except sensitive commands — see README, "Permission policy") |
+| `permission_mode` · `add_dirs` | override the `.env` defaults |
+| `tasks` | task prefixes: `/link HT-123` or the deep link `t:HT-123` land in this project |
+| `chats` | groups that talk to this project by default |
 
-Troque de projeto por conversa/tópico com `/project`; crie tópicos já no projeto com `/new <alias>`.
+Switch projects per conversation/topic with `/project`; create topics already in a project
+with `/new <alias>`.
 
-### 4.3 Claude Code — permissões globais
+### 4.3 Claude Code — global permissions
 
-O bot passa `--settings '{"permissions":{"ask":["Bash","Edit","Write","NotebookEdit"]}}'` a
-cada turno: regras *ask* são avaliadas antes das *allow* e do `acceptEdits`, então **todo
-comando e toda escrita de arquivo chegam à mesa do bot** mesmo que o seu
-`~/.claude/settings.json` tenha `allow: ["Bash"]`. Não precisa mexer nas suas regras globais;
-o que o bot auto-aprova é a lista read-only + `Edit`/`Write` + `allowed_tools` do projeto + o
-que você marcou como "Sempre nesta sessão" — nunca o que for sensível.
+The bot passes `--settings '{"permissions":{"ask":["Bash","Edit","Write","NotebookEdit"]}}'`
+on every turn: *ask* rules are evaluated before *allow* rules and before `acceptEdits`, so
+**every command and every file write reaches the bot's desk** even if your
+`~/.claude/settings.json` has `allow: ["Bash"]`. You don't need to touch your global rules;
+what the bot auto-approves is the read-only set + `Edit`/`Write` + the project's
+`allowed_tools` + whatever you marked as "Always in this session" — never anything sensitive.
 
-### 4.4 `permissions.json` e `/audit`
+### 4.4 `permissions.json` and `/audit`
 
 ```bash
-cp permissions.example.json permissions.json     # opcional: sem o arquivo valem os defaults
+cp permissions.example.json permissions.json     # optional: without the file the defaults apply
 ```
 
-| Chave | O quê |
+| Key | What |
 |---|---|
-| `read_only` | regras (sintaxe `--allowedTools`) auto-aprovadas em qualquer projeto: `Bash(ls *)`, `Bash(git status *)`… |
-| `dangerous` | regexes (case-insensitive) sobre o comando Bash que **sempre perguntam**: `\brm\b`, `\bgit\b.*\bpush\b`, `\bdelete\s+from\b`… |
-| `sensitive_paths` | globs (`fnmatch`, `*` casa `/`) de caminhos em que `Edit`/`Write` sempre perguntam: `*/.env`, `*/.ssh/*`, `/etc/*`… |
+| `read_only` | rules (`--allowedTools` syntax) auto-approved in every project: `Bash(ls *)`, `Bash(git status *)`… |
+| `dangerous` | case-insensitive regexes over the Bash command that **always ask**: `\brm\b`, `\bgit\b.*\bpush\b`, `\bdelete\s+from\b`… |
+| `sensitive_paths` | globs (`fnmatch`, `*` matches `/`) of paths where `Edit`/`Write` always ask: `*/.env`, `*/.ssh/*`, `/etc/*`… |
 
-Cada chave presente **substitui** a lista default inteira (copie do example e edite). O arquivo
-é recarregado automaticamente quando o mtime muda; JSON inválido mantém a política anterior e
-avisa no log.
+Each key present **replaces** the whole default list (copy the example and edit). The file is
+reloaded automatically when its mtime changes; invalid JSON keeps the previous policy and logs
+a warning.
 
-Toda decisão (auto, aprovada, "sempre", negada) fica em `.decisions.jsonl`. `/audit [n]` resume
-as últimas *n* (default 200) do projeto atual e oferece botões **➕** pras regras que você
-aprovou à mão repetidas vezes sem nunca negar — o toque grava a regra em `allowed_tools` do
-projeto no `projects.json`, sem restart.
+Every decision (auto, approved, "always", denied) goes to `.decisions.jsonl`. `/audit [n]`
+summarizes the last *n* (default 200) for the current project and offers **➕** buttons for
+rules you approved by hand repeatedly without ever denying — one tap writes the rule into the
+project's `allowed_tools` in `projects.json`, no restart needed.
 
-## 5. Rodar
+## 5. Running
 
-### 5.1 Manual (primeiro teste)
+### 5.1 Manually (first test)
 
 ```bash
 uv run tgclaude
 ```
 
-Deve logar `bot @seu_bot no ar; projetos=[...]; chats=[...]; topics=True guest=True`. Mande
-`/start` no Telegram. `Ctrl+C` encerra. Só **um** processo por token — dois pollers dão
+It should log `bot @your_bot up; projects=[...]; chats=[...]; topics=True guest=True`. Send
+`/start` on Telegram. `Ctrl+C` stops it. Only **one** process per token — two pollers raise
 `TelegramConflictError`.
 
-### 5.2 Como serviço (`systemd --user`)
+### 5.2 As a service (`systemd --user`)
 
 ```bash
 mkdir -p ~/.config/systemd/user
 cp deploy/claude-telegram-bot-v2.service ~/.config/systemd/user/
-# se o repo NÃO está em /data/projects/claude-telegram-bot-v2, ajuste WorkingDirectory e ExecStart (.venv/bin/tgclaude) no unit
+# if the repo is NOT at /data/projects/claude-telegram-bot-v2, adjust WorkingDirectory and ExecStart (.venv/bin/tgclaude) in the unit
 systemctl --user daemon-reload
 systemctl --user enable --now claude-telegram-bot-v2
-loginctl enable-linger $USER          # continua rodando sem sessão gráfica / após reboot
+loginctl enable-linger $USER          # keeps running without a graphical session / after reboot
 ```
 
-Operação:
+Operations:
 
 ```bash
 systemctl --user status claude-telegram-bot-v2
@@ -242,96 +246,97 @@ journalctl --user -u claude-telegram-bot-v2 -f
 systemctl --user restart claude-telegram-bot-v2
 ```
 
-> Nunca `pkill -f tgclaude` de dentro de uma sessão do Claude Code: o `bash -c` do
-> próprio tool contém a string e morre junto. Use `systemctl --user restart` ou mate por PID.
+> Never `pkill -f tgclaude` from inside a Claude Code session: the tool's own
+> `bash -c` contains the string and gets killed too. Use `systemctl --user restart` or kill by PID.
 
-## 6. Voz — WhisperX (opcional)
+## 6. Voice — WhisperX (optional)
 
-Dois modos; o bot usa o servidor e cai pro CLI se ele estiver fora.
+Two modes; the bot uses the server and falls back to the CLI if the server is unreachable.
 
-### 6.1 Instalar o WhisperX (venv próprio, fora do venv do bot)
+### 6.1 Install WhisperX (its own venv, separate from the bot's)
 
 ```bash
 uv venv ~/whisperx/.venv --python 3.12
 uv pip install --python ~/whisperx/.venv/bin/python whisperx
-# GPU: confira que o torch instalado enxerga CUDA
+# GPU: check that the installed torch sees CUDA
 ~/whisperx/.venv/bin/python -c "import torch; print(torch.cuda.is_available())"
 ```
 
-Na **primeira** execução o WhisperX baixa o modelo (`Systran/faster-whisper-large-v3`, ~3 GB)
-do Hugging Face — precisa de rede uma vez; depois pode rodar com `HF_HUB_OFFLINE=1`.
+On the **first** run WhisperX downloads the model (`Systran/faster-whisper-large-v3`, ~3 GB)
+from Hugging Face — it needs network once; afterwards it can run with `HF_HUB_OFFLINE=1`.
 
-### 6.2 Servidor residente (recomendado — ~0,5 s por áudio)
+### 6.2 Resident server (recommended — ~0.5 s per audio)
 
-Carrega o `large-v3` uma vez e transcreve por HTTP em loopback. Sem ele, cada áudio paga
-~10 s subindo Python+CUDA+modelo.
+Loads `large-v3` once and transcribes over loopback HTTP. Without it, every audio pays
+~10 s spinning up Python+CUDA+model.
 
 ```bash
 cp deploy/whisperx-server.service ~/.config/systemd/user/
-# ajuste ExecStart se o venv não for ~/whisperx/.venv ou o repo não estiver em /data/projects/...
+# adjust ExecStart if the venv isn't ~/whisperx/.venv or the repo isn't at /data/projects/...
 systemctl --user daemon-reload
 systemctl --user enable --now whisperx-server
-curl -s http://127.0.0.1:8765/health      # {"loaded": true, ...} após ~6 s de preload
+curl -s http://127.0.0.1:8765/health      # {"loaded": true, ...} after ~6 s of preload
 journalctl --user -u whisperx-server -f
 ```
 
-Ajustes no unit (`Environment=`): `WHISPERX_MODEL`, `WHISPERX_COMPUTE_TYPE` (`float16` em GPU,
-`int8` em CPU), `WHISPERX_LANGUAGE`, `WHISPERX_IDLE_SECONDS` (default 900: descarrega o modelo
-após 15 min sem áudio e libera a VRAM; o próximo áudio paga ~6 s de recarga), `WHISPERX_PORT`.
+Unit tweaks (`Environment=`): `WHISPERX_MODEL`, `WHISPERX_COMPUTE_TYPE` (`float16` on GPU,
+`int8` on CPU), `WHISPERX_LANGUAGE`, `WHISPERX_IDLE_SECONDS` (default 900: unloads the model
+after 15 min without audio and frees the VRAM; the next audio pays ~6 s to reload),
+`WHISPERX_PORT`.
 
-### 6.3 CLI de fallback
+### 6.3 Fallback CLI
 
-`WHISPERX_BIN` aponta pra um executável compatível com o CLI do WhisperX. Com o WhisperX do
-PyPI basta `WHISPERX_BIN=~/whisperx/.venv/bin/whisperx`. O bot passa `--model`, `--device`,
-`--compute_type`, `--language`, `--batch_size`, `--no_align`, `--output_format json`,
-`--output_dir`, sob `flock` quando ele existe.
+`WHISPERX_BIN` points to an executable compatible with the WhisperX CLI. With WhisperX from
+PyPI, `WHISPERX_BIN=~/whisperx/.venv/bin/whisperx` is enough. The bot passes `--model`,
+`--device`, `--compute_type`, `--language`, `--batch_size`, `--no_align`,
+`--output_format json`, `--output_dir`, under `flock` when available.
 
-> Com o servidor **no ar**, não tente rodar o CLI ao mesmo tempo: o segundo `large-v3` dá
-> `CUDA out of memory`. Por isso o bot só cai pro CLI quando o servidor está inalcançável.
+> With the server **up**, don't run the CLI at the same time: a second `large-v3` raises
+> `CUDA out of memory`. That's why the bot only falls back to the CLI when the server is unreachable.
 
-### 6.4 Sem GPU
+### 6.4 Without a GPU
 
-`WHISPERX_DEVICE=cpu` e `WHISPERX_COMPUTE_TYPE=int8` (no `.env` e no unit do servidor). Modelo
-menor (`medium`, `small`) se ficar lento demais.
+`WHISPERX_DEVICE=cpu` and `WHISPERX_COMPUTE_TYPE=int8` (in `.env` and in the server unit). A
+smaller model (`medium`, `small`) if it gets too slow.
 
-## 7. Verificar que está tudo certo
+## 7. Verify everything works
 
-| Teste | Esperado |
+| Test | Expected |
 |---|---|
-| `/start` | resposta com o projeto atual |
-| texto qualquer | rascunho "Thinking…" crescendo, depois a resposta com rodapé `⏱ · ↓tokens ↑tokens` |
-| `/new smsfunnel` | tópico criado (se `has_topics_enabled` já for `true`) |
-| *"cria /tmp/x.txt com sh -c"* | card 🔐 com botões; **Aprovar** executa |
-| *"apaga /tmp/x.txt com rm"* | card ⚠️ sensível; precisa de **2 toques** |
-| áudio | eco `📝 Transcrito:` em ~1 s (servidor) e o turno começa |
-| *"me pergunta se prefiro A ou B"* | pergunta com botões |
-| *"a cada 5 min me diz a hora"* | `/jobs` lista; `/unschedule 1` remove |
+| `/start` | reply showing the current project |
+| any text | "Thinking…" draft growing, then the answer with a `⏱ · ↓tokens ↑tokens` footer |
+| `/new smsfunnel` | topic created (once `has_topics_enabled` is `true`) |
+| *"create /tmp/x.txt with sh -c"* | 🔐 card with buttons; **Approve** runs it |
+| *"delete /tmp/x.txt with rm"* | ⚠️ sensitive card; needs **2 taps** |
+| voice note | `📝 Transcribed:` echo in ~1 s (server) and the turn starts |
+| *"ask me whether I prefer A or B"* | question with buttons |
+| *"every 5 min tell me the time"* | `/jobs` lists it; `/unschedule 1` removes it |
 
-## 8. Atualizar
+## 8. Updating
 
 ```bash
 git -C /data/projects/claude-telegram-bot-v2 pull
 uv sync
 uv run pytest
 systemctl --user restart claude-telegram-bot-v2
-# se deploy/whisperx_server.py mudou:
+# if deploy/whisperx_server.py changed:
 systemctl --user restart whisperx-server
 ```
 
 ## 9. Troubleshooting
 
-| Sintoma | Causa / fix |
+| Symptom | Cause / fix |
 |---|---|
-| `TelegramConflictError: terminated by other getUpdates request` | dois processos com o mesmo token — pare o outro (`nohup` antigo, v1 com o mesmo token…) |
-| `/new` → *"the chat is not a forum"* | Threaded Mode recém-ligado; espere ~5 min e confira `getMe` |
-| nunca aparece card 🔐 | `/yolo` ligado nesse tópico (`/status` mostra), ou o comando está em `allowed_tools`/read-only |
-| tudo é negado em grupo | esperado: grupo não tem aprovador; ponha o necessário em `allowed_tools` do projeto |
-| `❌ Claude encerrou sem resultado (rc=1)` | rode `claude -p "oi"` no terminal do mesmo usuário — normalmente é login/`claude` fora do `PATH` do unit |
-| áudio demora ~10 s | `whisperx-server` parado ou `WHISPERX_SERVER_URL` vazio — `systemctl --user status whisperx-server` |
-| `CUDA failed with error out of memory` | servidor + CLI ao mesmo tempo, ou outra pipeline na GPU; reduza `WHISPERX_IDLE_SECONDS` ou use `int8` |
-| áudio: `whisperx exit 1 … HF_HUB_OFFLINE` | primeira execução precisa baixar o modelo com rede |
-| rascunho some após ~30 s parado | comportamento do Telegram; o bot reenvia a cada `DRAFT_KEEPALIVE_SECONDS` — se o Claude está mudo há mais que isso, veja o journal |
-| `permission_denials` no rodapé | Claude tentou algo fora da allowlist sem aprovador (grupo/job) — ajuste `allowed_tools` |
-| menção `@bot` no grupo não chega (nem aparece no log) | *Group Privacy* ligado: o Telegram não entrega menções. Use `/ask …` ou reply, ou desligue o privacy e re-adicione o bot |
-| em grupo a resposta vem pública, não efêmera | o bot não é admin do grupo (`BOT_NOT_ADMIN` no log): promova o bot a admin |
-| mudou o `.env` e nada aconteceu | o `.env` é lido só no start: `systemctl --user restart claude-telegram-bot-v2` |
+| `TelegramConflictError: terminated by other getUpdates request` | two processes with the same token — stop the other one (old `nohup`, v1 with the same token…) |
+| `/new` → *"the chat is not a forum"* | Threaded Mode just enabled; wait ~5 min and check `getMe` |
+| 🔐 card never shows up | `/yolo` is on in that topic (`/status` shows it), or the command is in `allowed_tools`/read-only |
+| everything is denied in a group | expected: groups have no approver; put what's needed in the project's `allowed_tools` |
+| `❌ Claude exited without a result (rc=1)` | run `claude -p "hi"` in a terminal as the same user — usually login, or `claude` missing from the unit's `PATH` |
+| audio takes ~10 s | `whisperx-server` is down or `WHISPERX_SERVER_URL` is empty — `systemctl --user status whisperx-server` |
+| `CUDA failed with error out of memory` | server + CLI at the same time, or another pipeline on the GPU; lower `WHISPERX_IDLE_SECONDS` or use `int8` |
+| audio: `whisperx exit 1 … HF_HUB_OFFLINE` | the first run needs network to download the model |
+| draft disappears after ~30 s idle | Telegram behavior; the bot resends every `DRAFT_KEEPALIVE_SECONDS` — if Claude has been silent longer than that, check the journal |
+| `permission_denials` in the footer | Claude tried something outside the allowlist with no approver (group/job) — adjust `allowed_tools` |
+| `@bot` mention in a group never arrives (not even in the log) | *Group Privacy* is on: Telegram doesn't deliver mentions. Use `/ask …` or a reply, or turn privacy off and re-add the bot |
+| in a group the answer is public, not ephemeral | the bot isn't a group admin (`BOT_NOT_ADMIN` in the log): promote it |
+| changed `.env` and nothing happened | `.env` is read only at start: `systemctl --user restart claude-telegram-bot-v2` |
