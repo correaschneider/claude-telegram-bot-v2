@@ -1,0 +1,13 @@
+# Segredos / config local
+.env
+.env_*
+
+# Estado de runtime
+.sessions.json
+bot.log
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.ruff_cache/

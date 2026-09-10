@@ -1,0 +1,23 @@
+[project]
+name = "claude-telegram-bot-v2"
+version = "0.1.0"
+description = "Bot de Telegram (aiogram) que faz streaming das respostas do Claude Code via sendMessageDraft"
+requires-python = ">=3.12"
+dependencies = [
+    "aiogram==3.31.0",
+    "python-dotenv==1.2.2",
+]
+
+[dependency-groups]
+dev = ["ruff==0.15.18"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
