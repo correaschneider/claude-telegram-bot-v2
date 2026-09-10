@@ -22,10 +22,12 @@ class Conversation:
     yolo_until: float = 0.0
     checklist_msg: int | None = None
     auto_title: bool = False  # tópico criado pelo bot só com o alias → renomeia após o 1º turno
+    job_id: str | None = None  # conversa efêmera de um agendamento (sessão própria, não persiste)
 
     @property
     def key(self) -> str:
-        return f"{self.chat_id}:{self.topic_id}"
+        base = f"{self.chat_id}:{self.topic_id}"
+        return f"{base}:job{self.job_id}" if self.job_id else base
 
     def yolo(self, now: float | None = None) -> bool:
         return self.yolo_until > (now or time.time())

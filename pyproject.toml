@@ -6,6 +6,8 @@ requires-python = ">=3.12"
 dependencies = [
     "aiogram==3.31.0",
     "python-dotenv==1.2.2",
+    "APScheduler==3.11.2",
+    "tzdata",
 ]
 
 [dependency-groups]

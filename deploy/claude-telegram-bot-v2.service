@@ -1,0 +1,26 @@
+# Unit de usuário (systemd --user). Instalar:
+#   mkdir -p ~/.config/systemd/user
+#   cp deploy/claude-telegram-bot-v2.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now claude-telegram-bot-v2
+#   loginctl enable-linger $USER      # sobrevive a logout (opcional)
+# Logs: journalctl --user -u claude-telegram-bot-v2 -f
+[Unit]
+Description=claude-telegram-bot-v2 (Telegram ↔ Claude Code)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/data/projects/claude-telegram-bot-v2
+ExecStart=/data/projects/claude-telegram-bot-v2/.venv/bin/python bot.py
+Restart=always
+RestartSec=5
+# `claude` e `whisperx-cli` vivem em ~/.local/bin; o .env é lido pelo próprio bot.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+KillMode=mixed
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

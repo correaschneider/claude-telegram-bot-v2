@@ -7,9 +7,16 @@ from dataclasses import dataclass
 
 DEFAULT_SYSTEM_PROMPT = (
     "Você está conversando pelo Telegram, provavelmente com o usuário no celular. "
-    "Seja direto e conciso; prefira listas curtas a tabelas largas; evite blocos enormes de saída. "
-    "Se a tarefa tiver 3 ou mais etapas, chame a tool mcp__tg__update_checklist ao planejar "
-    "(todas as etapas) e sempre que concluir uma etapa (reenvie a lista inteira marcando done=true)."
+    "Seja direto e conciso; prefira listas curtas a tabelas largas; evite blocos enormes de saída.\n"
+    "Tools do Telegram (servidor MCP `tg`):\n"
+    "- mcp__tg__update_checklist: se a tarefa tiver 3+ etapas, registre o plano ao começar e "
+    "reenvie a lista inteira (done=true nas concluídas) a cada etapa.\n"
+    "- mcp__tg__ask_user: quando precisar de uma decisão do usuário entre alternativas claras, "
+    "pergunte por aqui (botões) em vez de em texto; espere a resposta antes de seguir.\n"
+    "- mcp__tg__send_file: entrega arquivos ao usuário. Imagens/PDF/áudio/vídeo citados por "
+    "caminho absoluto na resposta já são enviados automaticamente; use a tool para .md/.json/.txt.\n"
+    "- mcp__tg__schedule / mcp__tg__unschedule: tarefas recorrentes pedidas pelo usuário "
+    "(cron de 5 campos para horários de calendário; every_seconds>=5 para intervalos curtos)."
 )
 
 
@@ -38,6 +45,8 @@ class Config:
     claude_append_system_prompt: str
 
     store_file: str
+    jobs_file: str
+    default_tz: str
     session_ttl: int
     yolo_ttl: int
 
@@ -53,38 +62,60 @@ class Config:
 
     group_public_tag: str
 
+    whisperx_bin: str
+    whisperx_model: str
+    whisperx_device: str
+    whisperx_language: str
+    whisperx_compute_type: str
+    whisperx_batch: str
+    whisperx_lock: str
+    audio_tmp_dir: str
+    image_tmp_dir: str
+
     @classmethod
     def from_env(cls) -> Config:
         cwd = os.getcwd()
-        chats = frozenset(int(x) for x in _split_csv(os.environ["ALLOWED_CHAT_IDS"]))
-        users_raw = _split_csv(os.environ.get("ALLOWED_USER_IDS", ""))
+        env = os.environ
+        chats = frozenset(int(x) for x in _split_csv(env["ALLOWED_CHAT_IDS"]))
+        users_raw = _split_csv(env.get("ALLOWED_USER_IDS", ""))
         users = (
             frozenset(int(x) for x in users_raw)
             if users_raw
             else frozenset(c for c in chats if c > 0)
         )
         return cls(
-            telegram_token=os.environ["TELEGRAM_TOKEN"],
+            telegram_token=env["TELEGRAM_TOKEN"],
             allowed_chat_ids=chats,
             allowed_user_ids=users,
-            workspace=os.environ["WORKSPACE"],
-            projects_file=os.environ.get("PROJECTS_FILE") or os.path.join(cwd, "projects.json"),
-            claude_bin=os.environ.get("CLAUDE_BIN", "claude"),
-            claude_permission_mode=os.environ.get("CLAUDE_PERMISSION_MODE", "acceptEdits"),
-            claude_allowed_tools=os.environ.get("CLAUDE_ALLOWED_TOOLS", "").strip(),
-            claude_add_dirs=_split_csv(os.environ.get("CLAUDE_ADD_DIRS", "")),
-            claude_append_system_prompt=os.environ.get("CLAUDE_APPEND_SYSTEM_PROMPT", "").strip()
+            workspace=env["WORKSPACE"],
+            projects_file=env.get("PROJECTS_FILE") or os.path.join(cwd, "projects.json"),
+            claude_bin=env.get("CLAUDE_BIN", "claude"),
+            claude_permission_mode=env.get("CLAUDE_PERMISSION_MODE", "acceptEdits"),
+            claude_allowed_tools=env.get("CLAUDE_ALLOWED_TOOLS", "").strip(),
+            claude_add_dirs=_split_csv(env.get("CLAUDE_ADD_DIRS", "")),
+            claude_append_system_prompt=env.get("CLAUDE_APPEND_SYSTEM_PROMPT", "").strip()
             or DEFAULT_SYSTEM_PROMPT,
-            store_file=os.environ.get("STORE_FILE") or os.path.join(cwd, ".store.json"),
-            session_ttl=int(os.environ.get("SESSION_TTL_SECONDS", str(6 * 3600))),
-            yolo_ttl=int(os.environ.get("YOLO_TTL_SECONDS", "3600")),
-            draft_interval=float(os.environ.get("DRAFT_INTERVAL_SECONDS", "1.5")),
-            draft_keepalive=float(os.environ.get("DRAFT_KEEPALIVE_SECONDS", "10")),
-            draft_max_chars=int(os.environ.get("DRAFT_MAX_CHARS", "3500")),
-            rich_messages=_bool(os.environ.get("RICH_MESSAGES"), True),
-            footer_cost=_bool(os.environ.get("FOOTER_COST"), False),
-            bridge_host=os.environ.get("BRIDGE_HOST", "127.0.0.1"),
-            bridge_port=int(os.environ.get("BRIDGE_PORT", "0")),
-            mcp_tool_timeout_ms=int(os.environ.get("MCP_TOOL_TIMEOUT_MS", str(24 * 3600 * 1000))),
-            group_public_tag=os.environ.get("GROUP_PUBLIC_TAG", "#todos"),
+            store_file=env.get("STORE_FILE") or os.path.join(cwd, ".store.json"),
+            jobs_file=env.get("JOBS_FILE") or os.path.join(cwd, ".jobs.json"),
+            default_tz=env.get("DEFAULT_TZ", "America/Sao_Paulo"),
+            session_ttl=int(env.get("SESSION_TTL_SECONDS", str(6 * 3600))),
+            yolo_ttl=int(env.get("YOLO_TTL_SECONDS", "3600")),
+            draft_interval=float(env.get("DRAFT_INTERVAL_SECONDS", "1.5")),
+            draft_keepalive=float(env.get("DRAFT_KEEPALIVE_SECONDS", "10")),
+            draft_max_chars=int(env.get("DRAFT_MAX_CHARS", "3500")),
+            rich_messages=_bool(env.get("RICH_MESSAGES"), True),
+            footer_cost=_bool(env.get("FOOTER_COST"), False),
+            bridge_host=env.get("BRIDGE_HOST", "127.0.0.1"),
+            bridge_port=int(env.get("BRIDGE_PORT", "0")),
+            mcp_tool_timeout_ms=int(env.get("MCP_TOOL_TIMEOUT_MS", str(24 * 3600 * 1000))),
+            group_public_tag=env.get("GROUP_PUBLIC_TAG", "#todos"),
+            whisperx_bin=env.get("WHISPERX_BIN") or os.path.expanduser("~/.local/bin/whisperx-cli"),
+            whisperx_model=env.get("WHISPERX_MODEL", "large-v3"),
+            whisperx_device=env.get("WHISPERX_DEVICE", "cuda"),
+            whisperx_language=env.get("WHISPERX_LANGUAGE", "pt"),
+            whisperx_compute_type=env.get("WHISPERX_COMPUTE_TYPE", "int8"),
+            whisperx_batch=env.get("WHISPERX_BATCH", "8"),
+            whisperx_lock=env.get("WHISPERX_LOCK", "/tmp/whisperx-pipeline.lock"),
+            audio_tmp_dir=env.get("AUDIO_TMP_DIR", "/tmp/telegram-audio"),
+            image_tmp_dir=env.get("IMAGE_TMP_DIR", "/tmp/telegram-images"),
         )

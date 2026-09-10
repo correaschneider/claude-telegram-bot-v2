@@ -11,6 +11,7 @@ import secrets
 from aiogram.exceptions import TelegramBadRequest
 
 from claude_stream import RunSpec
+from delivery import send_generated_files
 from permissions import READ_ONLY_RULES, split_rules
 from services import ActiveTurn, Services
 from store import Conversation
@@ -18,7 +19,7 @@ from turn import DraftSink, Turn, TurnOutcome
 
 log = logging.getLogger("claude-bot")
 
-CHECKLIST_TOOL = "mcp__tg__update_checklist"
+TG_TOOLS = "mcp__tg__*"  # checklist, ask_user, send_file, schedule… liberadas sem prompt
 # Regra `ask` é avaliada ANTES das `allow` (inclusive as globais do ~/.claude/settings.json),
 # então todo Bash cai no prompt tool e a política fica 100% na mesa do bot.
 ASK_SETTINGS = json.dumps({"permissions": {"ask": ["Bash"]}})
@@ -60,7 +61,7 @@ async def run_turn(
         }
     )
     project_rules = split_rules(project.allowed_tools or cfg.claude_allowed_tools)
-    allowed = " ".join([*project_rules, *conv.allow, CHECKLIST_TOOL])
+    allowed = " ".join([*project_rules, *conv.allow, TG_TOOLS])
     spec = RunSpec(
         prompt=prompt,
         cwd=project.path,
@@ -103,8 +104,18 @@ async def run_turn(
         services.state.active.pop(conv.key, None)
         services.state.by_token.pop(token, None)
         services.desk.cancel_all(active)
+        services.questions.cancel_all(active)
 
-    if outcome.session_id:
+    if allow_prompt and not outcome.error:
+        with contextlib.suppress(Exception):
+            await send_generated_files(
+                services.bot,
+                conv.chat_id,
+                conv.topic_id or None,
+                f"{outcome.progress}\n{outcome.text}",
+                sent=active.sent_files,
+            )
+    if outcome.session_id and not conv.job_id:
         services.store.set_session(conv, outcome.session_id)
     if conv.auto_title and conv.topic_id and not outcome.error:
         conv.auto_title = False

@@ -1,8 +1,10 @@
-"""Handlers do chat privado (com ou sem tópicos): comandos e texto → turno."""
+"""Handlers do chat privado (com ou sem tópicos): comandos, texto, voz, imagem → turno."""
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -15,9 +17,19 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, U
 from aiogram.utils.deep_linking import create_start_link
 
 from formatting import format_elapsed
+from media import (
+    TRANSCRIPT_HEADER,
+    build_reply_context,
+    download_audio,
+    download_image,
+    is_image,
+    with_reply_context,
+)
 from projects import Project
 from runner import is_busy, run_turn
+from scheduler import describe
 from services import Services
+from sessions_index import list_recent_sessions
 from store import Conversation
 from telegram_sink import TelegramSink
 
@@ -95,8 +107,8 @@ async def create_topic(
 
 
 TOPICS_HINT = (
-    "Não consegui criar o tópico. Ligue *Topics in Private Chats* no @BotFather "
-    "(/mybots → Bot Settings) e tente de novo."
+    "Não consegui criar o tópico. Ligue *Threaded Mode* no @BotFather "
+    "(Mini App → seu bot → Settings → Threads Settings) e tente de novo."
 )
 
 
@@ -155,8 +167,9 @@ async def on_start(message: Message, services: Services) -> None:
     await message.answer(
         "Bot v2 — streaming do Claude Code.\n"
         f"Projeto desta conversa: {conv.project}\n\n"
-        "/project trocar · /new <alias> tópico novo · /fork bifurcar sessão\n"
-        "/status · /reset · /cancel · /yolo [min] · /allow · /link"
+        "Texto, voz ou imagem. Responder a uma mensagem inclui ela no contexto.\n"
+        "/project · /new <alias> · /fork · /sessions · /status · /reset · /cancel\n"
+        "/yolo [min] · /allow · /link · /jobs · /unschedule <id>"
     )
 
 
@@ -171,6 +184,7 @@ async def on_status(message: Message, services: Services) -> None:
         f"🧵 tópico {conv.topic_id or '—'} · sessão {conv.session_id[:8] if conv.session_id else '— (nova)'}",
         f"🔓 yolo: {'ON até ' + time.strftime('%H:%M', time.localtime(conv.yolo_until)) if yolo else 'off'}",
         f"🔁 regras: {', '.join(conv.allow) if conv.allow else '—'}",
+        f"⏰ agendamentos: {len(services.scheduler.for_chat(conv.chat_id))}",
         f"⚙️ processando há {format_elapsed(time.monotonic() - active.started_at)}"
         if active
         else "💤 ocioso",
@@ -286,6 +300,46 @@ async def on_fork(message: Message, services: Services) -> None:
     )
 
 
+@router.message(Command("sessions"))
+async def on_sessions(message: Message, services: Services) -> None:
+    sessions = list_recent_sessions({p.alias: p.path for p in services.projects.all()})
+    if not sessions:
+        await message.answer("Nenhuma sessão do Claude Code encontrada nos projetos.")
+        return
+    services.state.session_picks[message.chat.id] = sessions
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"{s['alias']} · {s['title']}"[:60], callback_data=f"sess:{i}"
+                )
+            ]
+            for i, s in enumerate(sessions)
+        ]
+    )
+    await message.answer("Retomar qual sessão neste tópico?", reply_markup=kb)
+
+
+@router.message(Command("jobs"))
+async def on_jobs(message: Message, services: Services) -> None:
+    jobs = services.scheduler.for_chat(message.chat.id)
+    if not jobs:
+        await message.answer('Sem agendamentos. Peça em linguagem natural ("todo dia 9h…").')
+        return
+    lines = [f"#{jid} · {describe(j)} · {j.get('title')}" for jid, j in jobs]
+    await message.answer("⏰ Agendamentos:\n" + "\n".join(lines) + "\n\n/unschedule <id> remove.")
+
+
+@router.message(Command("unschedule"))
+async def on_unschedule(message: Message, command: CommandObject, services: Services) -> None:
+    jid = (command.args or "").strip().lstrip("#")
+    if not jid:
+        await message.answer("Uso: /unschedule <id>")
+        return
+    ok = services.scheduler.remove(jid)
+    await message.answer(f"🗑 #{jid} removido." if ok else f"#{jid} não existe.")
+
+
 @router.message(Command("link"))
 async def on_link(message: Message, command: CommandObject, services: Services) -> None:
     arg = (command.args or "").strip()
@@ -318,22 +372,20 @@ async def on_allow(message: Message, command: CommandObject, services: Services)
     )
 
 
-# ---- texto → turno ----
+# ---- entrada → turno ----
 
 
-@router.message(F.text)
-async def on_text(message: Message, services: Services) -> None:
-    conv, created = conversation_of(services, message)
-    if is_busy(services, conv):
-        await message.answer("⏳ Ainda processando o turno anterior. /cancel pra interromper.")
-        return
-    if created and conv.topic_id:
-        await message.answer(f"Tópico novo → projeto {conv.project}. /project troca.")
+async def _start_turn(
+    services: Services, message: Message, conv: Conversation, prompt: str
+) -> None:
+    reply_block = await build_reply_context(
+        services.bot, services.bot_id, message, services.cfg.image_tmp_dir
+    )
     try:
         await run_turn(
             services,
             conv,
-            message.text or "",
+            with_reply_context(reply_block, prompt),
             draft_id=message.message_id,
             sink=TelegramSink(services.bot, use_rich=services.cfg.rich_messages),
             actor_id=message.from_user.id if message.from_user else message.chat.id,
@@ -344,6 +396,65 @@ async def on_text(message: Message, services: Services) -> None:
         await message.answer("❌ Falha interna ao rodar o turno; veja o log do bot.")
 
 
+async def _conversation_ready(services: Services, message: Message) -> Conversation | None:
+    conv, created = conversation_of(services, message)
+    if is_busy(services, conv):
+        await message.answer("⏳ Ainda processando o turno anterior. /cancel pra interromper.")
+        return None
+    if created and conv.topic_id:
+        await message.answer(f"Tópico novo → projeto {conv.project}. /project troca.")
+    return conv
+
+
+@router.message(F.text)
+async def on_text(message: Message, services: Services) -> None:
+    conv = await _conversation_ready(services, message)
+    if conv:
+        await _start_turn(services, message, conv, message.text or "")
+
+
+@router.message(F.voice | F.audio)
+async def on_voice(message: Message, services: Services) -> None:
+    conv = await _conversation_ready(services, message)
+    if conv is None:
+        return
+    with contextlib.suppress(TelegramBadRequest):
+        await services.bot.send_chat_action(
+            message.chat.id, "typing", message_thread_id=conv.topic_id or None
+        )
+    path = None
+    try:
+        path = await download_audio(services.bot, message, services.cfg.audio_tmp_dir)
+        text = await services.transcriber.transcribe(path)
+    except Exception as e:  # noqa: BLE001 — whisperx/rede: avisa e não roda turno
+        log.warning("transcrição falhou: %s", e)
+        await message.answer(f"❌ Não consegui transcrever o áudio: {str(e)[:200]}")
+        return
+    finally:
+        if path:
+            with contextlib.suppress(OSError):
+                os.remove(path)
+    if not text:
+        await message.answer("🤷 Não identifiquei fala no áudio.")
+        return
+    await message.answer(f"{TRANSCRIPT_HEADER} {text}")
+    await _start_turn(services, message, conv, text)
+
+
+@router.message(is_image)
+async def on_image(message: Message, services: Services) -> None:
+    conv = await _conversation_ready(services, message)
+    if conv is None:
+        return
+    path = await download_image(services.bot, message, services.cfg.image_tmp_dir)
+    if not path:
+        await message.answer("❌ Não consegui baixar a imagem.")
+        return
+    caption = (message.caption or "").strip() or "Analise esta imagem e diga o que vê."
+    prompt = f"{caption}\n\n[Imagem enviada pelo usuário — abra com a tool Read: {path}]"
+    await _start_turn(services, message, conv, prompt)
+
+
 @router.message()
 async def on_other(message: Message) -> None:
-    await message.answer("Por enquanto só texto. Voz/imagem vêm depois.")
+    await message.answer("Aceito texto, voz e imagem. Esse tipo de mensagem ainda não.")

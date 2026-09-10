@@ -411,12 +411,12 @@ def test_mcp_bridge_protocol():
 
     async def checklist(request):
         received.append(await request.json())
-        return web.json_response({"status": "checklist criada"})
+        return web.json_response({"text": "checklist criada", "is_error": False})
 
     async def scenario():
         app = web.Application()
         app.router.add_post("/ask", ask)
-        app.router.add_post("/checklist", checklist)
+        app.router.add_post("/tool/update_checklist", checklist)
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, "127.0.0.1", 0)
@@ -482,7 +482,14 @@ def test_mcp_bridge_protocol():
         r[1]["result"]["protocolVersion"] == "2025-06-18"
         and "tools" in r[1]["result"]["capabilities"]
     )
-    assert {t["name"] for t in r[2]["result"]["tools"]} == {"ask", "update_checklist"}
+    assert {t["name"] for t in r[2]["result"]["tools"]} >= {
+        "ask",
+        "update_checklist",
+        "ask_user",
+        "send_file",
+        "schedule",
+        "unschedule",
+    }
     decision = json.loads(r[3]["result"]["content"][0]["text"])
     assert decision == {"behavior": "allow", "updatedInput": {"command": "ls"}}
     assert r[4]["result"]["content"][0]["text"] == "checklist criada"
@@ -492,6 +499,60 @@ def test_mcp_bridge_protocol():
     checklist_payload = next(p for p in received if "items" in p)
     assert ask_payload["turn"] == "t1" and ask_payload["tool_name"] == "Bash"
     assert checklist_payload["items"] == [{"text": "a"}]
+
+
+# ---- delivery / media / scheduler / sessions ----
+
+
+def test_delivery_media_regex():
+    from delivery import SENDABLE_RE
+
+    text = "gerei /tmp/out/grafico.png e o relatório em /data/x/rel.pdf; fonte: /src/app.py e `/tmp/a b.jpg`"
+    assert SENDABLE_RE.findall(text) == ["/tmp/out/grafico.png", "/data/x/rel.pdf"]
+
+
+def test_reply_context_pure():
+    from media import with_reply_context
+
+    assert with_reply_context("", "oi") == "oi"
+    assert with_reply_context("BLOCO", "oi").startswith("BLOCO\n\nMensagem NOVA")
+
+
+def test_scheduler_validate_and_describe():
+    from scheduler import build_trigger, describe, validate
+
+    j = validate(
+        {"prompt": "resumo", "cron": "0 9 * * 1-5", "title": "Resumo"}, "America/Sao_Paulo"
+    )
+    assert (
+        j["cron"] == "0 9 * * 1-5"
+        and j["tz"] == "America/Sao_Paulo"
+        and describe(j).startswith("0 9 * * 1-5")
+    )
+    assert build_trigger(j) is not None
+    e = validate({"prompt": "ping", "every_seconds": 30}, "UTC")
+    assert e["every_seconds"] == 30 and describe(e) == "a cada 30s (UTC)"
+    for bad in (
+        {"prompt": ""},
+        {"prompt": "x"},
+        {"prompt": "x", "every_seconds": 1},
+        {"prompt": "x", "cron": "abc"},
+        {"prompt": "x", "cron": "* * * * *", "tz": "Marte/Base"},
+    ):
+        try:
+            validate(bad, "UTC")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"deveria falhar: {bad}")
+
+
+def test_sessions_encode_and_job_conversation_key():
+    from sessions_index import encode_cwd
+
+    assert encode_cwd("/data/projects") == "-data-projects"
+    assert Conversation(1, 2, "x").key == "1:2"
+    assert Conversation(1, 2, "x", job_id="7").key == "1:2:job7"
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 """Servidor MCP (stdio) que o Claude Code sobe por turno. Só stdlib: cada tools/call vira
-um POST no bot (TG_BRIDGE_URL) e bloqueia até o bot responder — é assim que a aprovação
-por botão no Telegram chega ao `--permission-prompt-tool`. Nunca importa o resto do bot."""
+um POST no bot (TG_BRIDGE_URL) e bloqueia até o bot responder — é assim que aprovação,
+perguntas com botões, checklist, entrega de arquivo e agendamento chegam ao Telegram."""
 
 from __future__ import annotations
 
@@ -15,19 +15,23 @@ URL = os.environ["TG_BRIDGE_URL"].rstrip("/")
 TOKEN = os.environ["TG_BRIDGE_TOKEN"]
 TURN = os.environ["TG_TURN"]
 
+
+def _obj(props: dict, required: list[str]) -> dict:
+    return {"type": "object", "properties": props, "required": required}
+
+
 TOOLS = [
     {
         "name": "ask",
         "description": "Permission prompt: forwards a tool permission request to the Telegram user.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
+        "inputSchema": _obj(
+            {
                 "tool_name": {"type": "string"},
                 "input": {"type": "object"},
                 "tool_use_id": {"type": "string"},
             },
-            "required": ["tool_name", "input"],
-        },
+            ["tool_name", "input"],
+        ),
     },
     {
         "name": "update_checklist",
@@ -35,21 +39,63 @@ TOOLS = [
             "Mostra/atualiza a checklist de etapas desta tarefa no Telegram. Chame ao planejar "
             "(todas as etapas) e sempre que concluir uma (reenvie a lista inteira com done=true)."
         ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
+        "inputSchema": _obj(
+            {
                 "title": {"type": "string"},
                 "items": {
                     "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {"text": {"type": "string"}, "done": {"type": "boolean"}},
-                        "required": ["text"],
-                    },
+                    "items": _obj(
+                        {"text": {"type": "string"}, "done": {"type": "boolean"}}, ["text"]
+                    ),
                 },
             },
-            "required": ["items"],
-        },
+            ["items"],
+        ),
+    },
+    {
+        "name": "ask_user",
+        "description": (
+            "Faz uma pergunta ao usuário com opções em botões e espera a resposta. "
+            "Use quando houver alternativas claras. Retorna o texto da(s) opção(ões) escolhida(s)."
+        ),
+        "inputSchema": _obj(
+            {
+                "question": {"type": "string"},
+                "options": {"type": "array", "items": {"type": "string"}, "maxItems": 10},
+                "multi": {"type": "boolean", "description": "permite escolher várias"},
+            },
+            ["question", "options"],
+        ),
+    },
+    {
+        "name": "send_file",
+        "description": (
+            "Envia arquivos do disco ao usuário no Telegram (caminhos absolutos). "
+            "Mídia citada na resposta já vai sozinha; use para .md/.json/.txt/.csv etc."
+        ),
+        "inputSchema": _obj({"paths": {"type": "array", "items": {"type": "string"}}}, ["paths"]),
+    },
+    {
+        "name": "schedule",
+        "description": (
+            "Agenda um prompt recorrente neste chat. Use `cron` (5 campos) para horários de "
+            "calendário ou `every_seconds` (>=5) para intervalos curtos. Retorna o id do job."
+        ),
+        "inputSchema": _obj(
+            {
+                "prompt": {"type": "string", "description": "o que executar a cada disparo"},
+                "cron": {"type": "string", "description": "ex.: '0 9 * * 1-5'"},
+                "every_seconds": {"type": "integer", "minimum": 5},
+                "tz": {"type": "string", "description": "IANA, ex.: America/Sao_Paulo"},
+                "title": {"type": "string"},
+            },
+            ["prompt"],
+        ),
+    },
+    {
+        "name": "unschedule",
+        "description": "Remove um agendamento pelo id (ver /jobs).",
+        "inputSchema": _obj({"id": {"type": "string"}}, ["id"]),
     },
 ]
 
@@ -84,11 +130,13 @@ def _call_tool(name: str, args: dict) -> dict:
         if "error" in decision:
             decision = {"behavior": "deny", "message": decision["error"]}
         return {"content": [{"type": "text", "text": json.dumps(decision)}]}
-    if name == "update_checklist":
-        res = _post("checklist", {"turn": TURN, **args})
+    if name in {t["name"] for t in TOOLS}:
+        res = _post(f"tool/{name}", {"turn": TURN, **args})
+        if "error" in res:
+            return {"content": [{"type": "text", "text": res["error"]}], "isError": True}
         return {
-            "content": [{"type": "text", "text": res.get("status", json.dumps(res))}],
-            "isError": "error" in res,
+            "content": [{"type": "text", "text": str(res.get("text", ""))}],
+            "isError": bool(res.get("is_error")),
         }
     return {"content": [{"type": "text", "text": f"tool desconhecida: {name}"}], "isError": True}
 
@@ -105,7 +153,7 @@ def _handle(msg: dict) -> None:
                 "result": {
                     "protocolVersion": proto,
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "tg", "version": "1.0"},
+                    "serverInfo": {"name": "tg", "version": "1.1"},
                 },
             }
         )
@@ -132,7 +180,7 @@ def main() -> None:
             msg = json.loads(line)
         except json.JSONDecodeError:
             continue
-        # tools/call de `ask` bloqueia por minutos; thread por request mantém ping/list vivos.
+        # tools/call pode bloquear por minutos; thread por request mantém ping/list vivos.
         threading.Thread(target=_handle, args=(msg,), daemon=True).start()
 
 

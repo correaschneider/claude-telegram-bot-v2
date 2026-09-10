@@ -52,6 +52,38 @@ async def on_project_pick(cq: CallbackQuery, services: Services) -> None:
     await cq.answer("ok")
 
 
+@router.callback_query(F.data.startswith("q:"))
+async def on_question(cq: CallbackQuery, services: Services) -> None:
+    if cq.from_user.id not in services.cfg.allowed_user_ids:
+        await cq.answer("Você não pode responder por este bot.", show_alert=True)
+        return
+    _, rid, action = cq.data.split(":")
+    res = await services.questions.resolve(rid, action)
+    await cq.answer("ok" if res else "Pergunta expirada ou já respondida.")
+
+
+@router.callback_query(F.data.startswith("sess:"))
+async def on_session_pick(cq: CallbackQuery, services: Services) -> None:
+    if cq.from_user.id not in services.cfg.allowed_user_ids or cq.message is None:
+        await cq.answer()
+        return
+    picks = services.state.session_picks.get(cq.message.chat.id) or []
+    idx = int(cq.data.split(":", 1)[1])
+    if idx >= len(picks):
+        await cq.answer("Lista expirada; rode /sessions de novo.")
+        return
+    s = picks[idx]
+    msg = cq.message
+    topic = (msg.message_thread_id or 0) if getattr(msg, "is_topic_message", None) else 0
+    conv = services.store.ensure(msg.chat.id, topic, s["alias"])
+    conv.project = s["alias"]
+    conv.checklist_msg = None
+    services.store.set_session(conv, s["session_id"])
+    with contextlib.suppress(TelegramBadRequest):
+        await msg.edit_text(f"↩️ Sessão {s['session_id'][:8]} ({s['alias']}) retomada: {s['title']}")
+    await cq.answer("ok")
+
+
 @router.stopped_message_generation()
 async def on_stop_button(event: MessageGenerationStopped, services: Services) -> None:
     key = f"{event.chat.id}:{event.message_thread_id or 0}"
