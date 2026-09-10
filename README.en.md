@@ -94,8 +94,7 @@ uv run bot.py
 In **@BotFather → Mini App → your bot → Settings**: turn on **Threaded Mode** (topics) and,
 if you want groups without adding the bot, **Guest Chat Mode**. Propagation takes ~5 min.
 
-To run it as a service, install WhisperX and troubleshoot: **[INSTALL.md](INSTALL.md)**
-(Portuguese).
+To run it as a service, install WhisperX and troubleshoot: **[INSTALL.en.md](INSTALL.en.md)**.
 
 ## 🏗️ Architecture
 

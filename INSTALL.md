@@ -1,3 +1,5 @@
+<p align="right">🇧🇷 Português · <a href="INSTALL.en.md">🇺🇸 English</a></p>
+
 # Instalação
 
 Guia completo: dependências, bot no Telegram, configuração, execução como serviço,
