@@ -19,6 +19,7 @@ from bridge_server import BridgeServer
 from claude_stream import SubprocessRunner
 from config import Config
 from permission_desk import PermissionDesk
+from permissions import PolicyLoader
 from projects import ProjectRegistry
 from questions import QuestionDesk
 from scheduler import JobScheduler, JobStore
@@ -39,6 +40,7 @@ COMMANDS = [
     BotCommand(command="cancel", description="Interromper o turno em execução"),
     BotCommand(command="yolo", description="Pular aprovações por N min: /yolo [min]"),
     BotCommand(command="allow", description="Regras aprovadas aqui (/allow clear)"),
+    BotCommand(command="audit", description="Decisões de permissão recentes → promover regras"),
     BotCommand(command="jobs", description="Agendamentos deste chat"),
     BotCommand(command="unschedule", description="Remover agendamento: /unschedule <id>"),
     BotCommand(command="link", description="Deep link: /link <alias|HT-123>"),
@@ -58,6 +60,7 @@ async def run() -> None:
     bridge_server = BridgeServer(cfg.bridge_host, cfg.bridge_port)
     url = await bridge_server.start()
     scheduler = JobScheduler(JobStore(cfg.jobs_file), cfg.default_tz)
+    policy = PolicyLoader(cfg.permissions_file)
 
     services = Services(
         cfg=cfg,
@@ -65,6 +68,7 @@ async def run() -> None:
         bot_username=me.username or "",
         bot_id=me.id,
         projects=ProjectRegistry.load(cfg.projects_file, cfg.workspace),
+        policy=policy,
         store=store,
         runner=SubprocessRunner(cfg.claude_bin),
         state=RuntimeState(),
@@ -74,7 +78,7 @@ async def run() -> None:
             script=os.path.join(HERE, "mcp_bridge.py"),
             python=sys.executable,
         ),
-        desk=PermissionDesk(bot, store),
+        desk=PermissionDesk(bot, store, policy, cfg.decisions_file),
         questions=QuestionDesk(bot),
         scheduler=scheduler,
         transcriber=WhisperXTranscriber(cfg),

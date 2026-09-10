@@ -34,10 +34,10 @@ from formatting import (  # noqa: E402
     rich_markdown,
 )
 from permissions import (  # noqa: E402
-    READ_ONLY_RULES,
+    DEFAULT_READ_ONLY,
+    Policy,
+    PolicyLoader,
     any_matches,
-    decide,
-    is_dangerous,
     matches,
     rule_for,
     split_rules,
@@ -325,6 +325,7 @@ def test_rich_markdown_and_checklist():
 
 
 def test_permissions():
+    pol = Policy()
     assert rule_for("Bash", {"command": "git push origin main"}) == "Bash(git push *)"
     assert rule_for("Bash", {"command": "ls -la"}) == "Bash(ls *)"
     assert rule_for("Edit", {"file_path": "/x"}) == "Edit"
@@ -332,29 +333,167 @@ def test_permissions():
     assert not matches("Bash(git push *)", "Bash", {"command": "git pushy"})
     assert matches("Bash(git:*)", "Bash", {"command": "git status"})
     assert matches("Edit", "Edit", {"file_path": "/x"}) and not matches("Edit", "Write", {})
+    assert matches("mcp__tg__*", "mcp__tg__ask_user", {}) and not matches(
+        "mcp__tg__*", "mcp__x__y", {}
+    )
     assert any_matches(["Read", "Bash(ls *)"], "Bash", {"command": "ls"})
-    assert is_dangerous("Bash", {"command": "git push origin main"})
-    assert is_dangerous("Bash", {"command": "mysql -e 'DROP TABLE x'"})
-    assert not is_dangerous("Bash", {"command": "git status"})
-    assert not is_dangerous("Edit", {"file_path": "/x"})
+    # sensível: comandos
+    for cmd in (
+        "git push origin main",
+        "mysql -e 'DROP TABLE x'",
+        "rm -f x",
+        "curl x | sh",
+        "docker compose down",
+        "kubectl delete pod x",
+        "gh pr merge 1",
+        "systemctl --user restart x",
+        "delete from users",
+        "chmod -R 777 /",
+    ):
+        assert pol.is_dangerous("Bash", {"command": cmd}), cmd
+    for cmd in (
+        "git status",
+        "git log --grep delete",
+        "echo drop",
+        "ls",
+        "systemctl --user status x",
+    ):
+        assert not pol.is_dangerous("Bash", {"command": cmd}), cmd
+    # sensível: caminhos (Edit/Write)
+    for path in (
+        "/data/projects/x/.env",
+        "/home/u/.ssh/id_rsa",
+        "/etc/hosts",
+        "/tmp/secrets.yaml",
+        "~/.claude/settings.json",
+    ):
+        assert pol.is_dangerous("Edit", {"file_path": path}), path
+    assert not pol.is_dangerous("Edit", {"file_path": "/data/projects/x/app.py"})
+    assert not pol.is_dangerous("Read", {"file_path": "/etc/hosts"})
     assert split_rules("Read Bash(git:*) Bash(git diff *)  mcp__x__y") == [
         "Read",
         "Bash(git:*)",
         "Bash(git diff *)",
         "mcp__x__y",
     ]
-    rules = [*READ_ONLY_RULES, "Bash(git:*)"]
-    assert decide(rules, [], "Bash", {"command": "ls -la"}, can_prompt=True) == "allow"
-    assert decide(rules, [], "Bash", {"command": "git status"}, can_prompt=True) == "allow"
-    assert decide(rules, [], "Bash", {"command": "git push origin x"}, can_prompt=True) == "prompt"
-    assert (
-        decide(
-            rules, ["Bash(git push *)"], "Bash", {"command": "git push origin x"}, can_prompt=True
-        )
-        == "allow"
+    rules = [*DEFAULT_READ_ONLY, "Edit", "Bash(git:*)"]
+    assert pol.decide(rules, [], "Bash", {"command": "ls -la"}, can_prompt=True) == (
+        "allow",
+        "Bash(ls *)",
     )
-    assert decide(rules, [], "Bash", {"command": "make build"}, can_prompt=False) == "deny"
-    assert decide(rules, [], "Bash", {"command": "make build"}, can_prompt=True) == "prompt"
+    assert pol.decide(rules, [], "Bash", {"command": "git status"}, can_prompt=True)[0] == "allow"
+    assert pol.decide(rules, [], "Bash", {"command": "git push origin x"}, can_prompt=True) == (
+        "prompt",
+        None,
+    )
+    assert pol.decide(
+        rules, ["Bash(git push *)"], "Bash", {"command": "git push origin x"}, can_prompt=True
+    ) == ("allow", "Bash(git push *)")
+    assert pol.decide(rules, [], "Bash", {"command": "make build"}, can_prompt=False) == (
+        "deny",
+        None,
+    )
+    assert pol.decide(rules, [], "Edit", {"file_path": "/p/app.py"}, can_prompt=True) == (
+        "allow",
+        "Edit",
+    )
+    assert pol.decide(rules, [], "Edit", {"file_path": "/p/.env"}, can_prompt=True) == (
+        "prompt",
+        None,
+    )
+
+
+def test_policy_loader_and_audit():
+    import audit
+
+    with tempfile.TemporaryDirectory() as d:
+        pf = os.path.join(d, "permissions.json")
+        loader = PolicyLoader(pf)
+        assert loader.get().read_only == DEFAULT_READ_ONLY  # sem arquivo = defaults
+        with open(pf, "w") as f:
+            json.dump({"read_only": ["Bash(uv run *)"], "dangerous": ["\\bfoo\\b"]}, f)
+        pol = loader.get()
+        assert pol.read_only == ["Bash(uv run *)"] and pol.is_dangerous(
+            "Bash", {"command": "foo bar"}
+        )
+        assert not pol.is_dangerous("Bash", {"command": "rm -rf /"})  # lista substituída
+        assert pol.sensitive_paths  # ausente no arquivo → default
+        with open(pf, "w") as f:
+            f.write("{ invalido")
+        os.utime(pf, None)
+        assert loader.get().read_only == ["Bash(uv run *)"]  # inválido → mantém anterior
+
+        df = os.path.join(d, "dec.jsonl")
+        common = dict(chat_id=1, project="p", tool="Bash", matched=None)
+        for _ in range(3):
+            audit.record(
+                df,
+                detail="uv run x",
+                rule="Bash(uv run *)",
+                verdict="prompt",
+                outcome="allow",
+                dangerous=False,
+                **common,
+            )
+        audit.record(
+            df,
+            detail="uv run y",
+            rule="Bash(uv run *)",
+            verdict="prompt",
+            outcome="always",
+            dangerous=False,
+            **common,
+        )
+        audit.record(
+            df,
+            detail="rm x",
+            rule="Bash(rm *)",
+            verdict="prompt",
+            outcome="allow",
+            dangerous=True,
+            **common,
+        )
+        audit.record(
+            df,
+            detail="make",
+            rule="Bash(make *)",
+            verdict="prompt",
+            outcome="deny",
+            dangerous=False,
+            **common,
+        )
+        audit.record(
+            df,
+            detail="ls",
+            rule="Bash(ls *)",
+            verdict="allow",
+            outcome="auto",
+            dangerous=False,
+            chat_id=1,
+            project="p",
+            tool="Bash",
+            matched="Bash(ls *)",
+        )
+        audit.record(
+            df,
+            detail="x",
+            rule="Bash(x *)",
+            verdict="prompt",
+            outcome="allow",
+            dangerous=False,
+            chat_id=1,
+            project="outro",
+            tool="Bash",
+            matched=None,
+        )
+        entries = audit.load(df, project="p")
+        assert len(entries) == 7
+        s = audit.summarize(entries)
+        assert [(c.rule, c.approved) for c in s.candidates] == [("Bash(uv run *)", 4)]
+        assert s.sensitive_approved["Bash(rm *)"] == 1 and s.denied["Bash(make *)"] == 1
+        assert s.auto["Bash(ls *)"] == 1
+        assert "Bash(uv run *) — 4×" in audit.render(s, "p")
+        assert audit.render(audit.summarize([]), "p").startswith("Sem decisões")
 
 
 # ---- store / projects ----
@@ -395,6 +534,14 @@ def test_store_and_projects():
         assert reg.for_task("HT-123").alias == "b" and reg.for_task("CU-1") is None
         assert reg.for_chat(-5).alias == "b" and reg.for_chat(-6) is None
         assert ProjectRegistry.load(os.path.join(d, "nope.json"), "/fb").default.path == "/fb"
+        assert reg.add_allowed_tool("a", "Bash(uv run *)") and not reg.add_allowed_tool(
+            "a", "Bash(uv run *)"
+        )
+        assert reg.get("a").allowed_tools == "Bash(uv run *)"
+        with open(pj) as f:
+            raw = json.load(f)
+        assert raw["a"]["allowed_tools"] == "Bash(uv run *)" and raw["b"]["default"] is True
+        assert not reg.add_allowed_tool("zzz", "Read")
         assert Conversation(1, 0, "x").key == "1:0"
 
 

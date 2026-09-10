@@ -144,11 +144,33 @@ Troque de projeto por conversa/tópico com `/project`; crie tópicos já no proj
 
 ### 4.3 Claude Code — permissões globais
 
-O bot passa `--settings '{"permissions":{"ask":["Bash"]}}'` a cada turno: regras *ask* são
-avaliadas antes das *allow*, então **todo `Bash` chega à mesa do bot** mesmo que o seu
+O bot passa `--settings '{"permissions":{"ask":["Bash","Edit","Write","NotebookEdit"]}}'` a
+cada turno: regras *ask* são avaliadas antes das *allow* e do `acceptEdits`, então **todo
+comando e toda escrita de arquivo chegam à mesa do bot** mesmo que o seu
 `~/.claude/settings.json` tenha `allow: ["Bash"]`. Não precisa mexer nas suas regras globais;
-o que o bot auto-aprova é a lista read-only embutida + `allowed_tools` do projeto + o que
-você marcou como "Sempre nesta sessão".
+o que o bot auto-aprova é a lista read-only + `Edit`/`Write` + `allowed_tools` do projeto + o
+que você marcou como "Sempre nesta sessão" — nunca o que for sensível.
+
+### 4.4 `permissions.json` e `/audit`
+
+```bash
+cp permissions.example.json permissions.json     # opcional: sem o arquivo valem os defaults
+```
+
+| Chave | O quê |
+|---|---|
+| `read_only` | regras (sintaxe `--allowedTools`) auto-aprovadas em qualquer projeto: `Bash(ls *)`, `Bash(git status *)`… |
+| `dangerous` | regexes (case-insensitive) sobre o comando Bash que **sempre perguntam**: `\brm\b`, `\bgit\b.*\bpush\b`, `\bdelete\s+from\b`… |
+| `sensitive_paths` | globs (`fnmatch`, `*` casa `/`) de caminhos em que `Edit`/`Write` sempre perguntam: `*/.env`, `*/.ssh/*`, `/etc/*`… |
+
+Cada chave presente **substitui** a lista default inteira (copie do example e edite). O arquivo
+é recarregado automaticamente quando o mtime muda; JSON inválido mantém a política anterior e
+avisa no log.
+
+Toda decisão (auto, aprovada, "sempre", negada) fica em `.decisions.jsonl`. `/audit [n]` resume
+as últimas *n* (default 200) do projeto atual e oferece botões **➕** pras regras que você
+aprovou à mão repetidas vezes sem nunca negar — o toque grava a regra em `allowed_tools` do
+projeto no `projects.json`, sem restart.
 
 ## 5. Rodar
 

@@ -9,7 +9,10 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
+
+from permissions import split_rules
 
 
 @dataclass(frozen=True)
@@ -27,6 +30,7 @@ class ProjectRegistry:
     def __init__(self, projects: dict[str, Project], default_alias: str) -> None:
         self._projects = projects
         self._default = default_alias
+        self._path: str | None = None
 
     @classmethod
     def load(cls, path: str, fallback_workspace: str) -> ProjectRegistry:
@@ -35,6 +39,12 @@ class ProjectRegistry:
                 raw: dict[str, dict] = json.load(f)
         except FileNotFoundError:
             raw = {}
+        registry = cls._from_raw(raw, fallback_workspace)
+        registry._path = path
+        return registry
+
+    @classmethod
+    def _from_raw(cls, raw: dict[str, dict], fallback_workspace: str) -> ProjectRegistry:
         projects: dict[str, Project] = {}
         default = ""
         for alias, spec in raw.items():
@@ -72,3 +82,33 @@ class ProjectRegistry:
 
     def for_chat(self, chat_id: int) -> Project | None:
         return next((p for p in self._projects.values() if chat_id in p.chats), None)
+
+    def add_allowed_tool(self, alias: str, rule: str) -> bool:
+        """Acrescenta uma regra ao `allowed_tools` do projeto, em memória e no projects.json
+        (preservando as outras chaves). False se o projeto não existe ou a regra já está lá."""
+        project = self._projects.get(alias)
+        if project is None or rule in split_rules(project.allowed_tools):
+            return False
+        new_tools = f"{project.allowed_tools} {rule}".strip()
+        self._projects[alias] = Project(
+            alias=alias,
+            path=project.path,
+            allowed_tools=new_tools,
+            permission_mode=project.permission_mode,
+            add_dirs=project.add_dirs,
+            tasks=project.tasks,
+            chats=project.chats,
+        )
+        if self._path:
+            try:
+                with open(self._path, encoding="utf-8") as f:
+                    raw = json.load(f)
+            except (FileNotFoundError, ValueError):
+                raw = {}
+            raw.setdefault(alias, {"path": project.path})["allowed_tools"] = new_tools
+            tmp = f"{self._path}.tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(raw, f, indent=2, ensure_ascii=False)
+                f.write("\n")
+            os.replace(tmp, self._path)
+        return True

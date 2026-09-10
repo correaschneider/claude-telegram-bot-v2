@@ -84,6 +84,24 @@ async def on_session_pick(cq: CallbackQuery, services: Services) -> None:
     await cq.answer("ok")
 
 
+@router.callback_query(F.data.startswith("audit:"))
+async def on_audit_pick(cq: CallbackQuery, services: Services) -> None:
+    if cq.from_user.id not in services.cfg.allowed_user_ids or cq.message is None:
+        await cq.answer()
+        return
+    picks = services.state.audit_picks.get(cq.message.chat.id) or []
+    idx = int(cq.data.split(":", 1)[1])
+    if idx >= len(picks):
+        await cq.answer("Lista expirada; rode /audit de novo.")
+        return
+    alias, rule = picks[idx]
+    if services.projects.add_allowed_tool(alias, rule):
+        await cq.answer(f"{rule} adicionada ao projeto {alias}", show_alert=True)
+        await cq.message.answer(f"➕ `{rule}` agora é auto-aprovada em {alias} (projects.json).")
+    else:
+        await cq.answer("Já estava nas regras do projeto.")
+
+
 @router.stopped_message_generation()
 async def on_stop_button(event: MessageGenerationStopped, services: Services) -> None:
     key = f"{event.chat.id}:{event.message_thread_id or 0}"

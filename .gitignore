@@ -2,10 +2,13 @@
 .env
 .env_*
 projects.json
+permissions.json
 
 # Estado de runtime
 .store.json
 .sessions.json
+.jobs.json
+.decisions.jsonl
 bot.log
 
 # Python

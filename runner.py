@@ -12,7 +12,7 @@ from aiogram.exceptions import TelegramBadRequest
 
 from claude_stream import RunSpec
 from delivery import send_generated_files
-from permissions import READ_ONLY_RULES, split_rules
+from permissions import split_rules
 from services import ActiveTurn, Services
 from store import Conversation
 from turn import DraftSink, Turn, TurnOutcome
@@ -20,9 +20,10 @@ from turn import DraftSink, Turn, TurnOutcome
 log = logging.getLogger("claude-bot")
 
 TG_TOOLS = "mcp__tg__*"  # checklist, ask_user, send_file, schedule… liberadas sem prompt
-# Regra `ask` é avaliada ANTES das `allow` (inclusive as globais do ~/.claude/settings.json),
-# então todo Bash cai no prompt tool e a política fica 100% na mesa do bot.
-ASK_SETTINGS = json.dumps({"permissions": {"ask": ["Bash"]}})
+# Regra `ask` é avaliada ANTES das `allow` (inclusive as globais do ~/.claude/settings.json)
+# e do acceptEdits, então Bash e escrita de arquivo caem no prompt tool e a política fica
+# 100% na mesa do bot (que reproduz o acceptEdits: Edit/Write passam, salvo caminho sensível).
+ASK_SETTINGS = json.dumps({"permissions": {"ask": ["Bash", "Edit", "Write", "NotebookEdit"]}})
 
 
 def is_busy(services: Services, conv: Conversation) -> bool:
@@ -92,7 +93,7 @@ async def run_turn(
         turn=turn,
         token=token,
         actor_id=actor_id,
-        rules=[*READ_ONLY_RULES, *project_rules],
+        rules=[*services.policy.get().read_only, "Edit", "Write", "NotebookEdit", *project_rules],
         can_prompt=allow_prompt,
     )
     services.state.active[conv.key] = active

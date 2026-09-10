@@ -1,6 +1,7 @@
-"""Mesa de permissões: transforma um pedido do `--permission-prompt-tool` numa mensagem
-com botões no Telegram e espera a decisão humana (minutos, horas — o processo do Claude
-fica segurado pelo MCP_TOOL_TIMEOUT)."""
+"""Mesa de permissões: aplica a política (read-only / projeto / sensível / "sempre"), registra
+cada decisão no log de auditoria e, quando precisa de humano, transforma o pedido do
+`--permission-prompt-tool` numa mensagem com botões e espera (o processo do Claude fica
+segurado pelo MCP_TOOL_TIMEOUT)."""
 
 from __future__ import annotations
 
@@ -16,7 +17,8 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CopyTextButton, InlineKeyboardButton, InlineKeyboardMarkup
 
-from permissions import decide, describe, is_dangerous, rule_for
+import audit
+from permissions import PolicyLoader, describe, rule_for
 from services import ActiveTurn
 from store import ConversationStore
 
@@ -57,14 +59,31 @@ def _keyboard(rid: str, dangerous: bool, copy_text: str | None) -> InlineKeyboar
 
 
 class PermissionDesk:
-    def __init__(self, bot: Bot, store: ConversationStore) -> None:
+    def __init__(
+        self, bot: Bot, store: ConversationStore, policy: PolicyLoader, decisions_file: str
+    ) -> None:
         self._bot = bot
         self._store = store
+        self._policy = policy
+        self._decisions = decisions_file
         self.pending: dict[str, Pending] = {}
+
+    def _record(self, active: ActiveTurn, tool_name: str, tool_input: dict, **kw) -> None:
+        audit.record(
+            self._decisions,
+            chat_id=active.conv.chat_id,
+            project=active.conv.project,
+            tool=tool_name,
+            detail=describe(tool_name, tool_input),
+            rule=rule_for(tool_name, tool_input),
+            **kw,
+        )
 
     async def ask(self, active: ActiveTurn, tool_name: str, tool_input: dict) -> dict:
         conv = active.conv
-        verdict = decide(
+        policy = self._policy.get()
+        dangerous = policy.is_dangerous(tool_name, tool_input)
+        verdict, matched = policy.decide(
             active.rules,
             conv.allow + active.session_allow,
             tool_name,
@@ -72,12 +91,30 @@ class PermissionDesk:
             can_prompt=active.can_prompt,
         )
         if verdict == "allow":
+            self._record(
+                active,
+                tool_name,
+                tool_input,
+                verdict="allow",
+                outcome="auto",
+                matched=matched,
+                dangerous=dangerous,
+            )
             return {"behavior": "allow", "updatedInput": tool_input}
         if verdict == "deny":
             log.info(
                 "negado sem prompt (chat sem aprovador): %s %s",
                 tool_name,
                 describe(tool_name, tool_input)[:80],
+            )
+            self._record(
+                active,
+                tool_name,
+                tool_input,
+                verdict="deny",
+                outcome="denied-no-prompter",
+                matched=None,
+                dangerous=dangerous,
             )
             return {
                 "behavior": "deny",
@@ -86,7 +123,6 @@ class PermissionDesk:
 
         rid = secrets.token_hex(5)
         detail = describe(tool_name, tool_input)
-        dangerous = is_dangerous(tool_name, tool_input)
         text = (
             f"🔐 <b>Permissão</b> · <code>{html.escape(tool_name)}</code>"
             + (" · ⚠️ sensível" if dangerous else "")
@@ -111,15 +147,24 @@ class PermissionDesk:
             self.pending.pop(rid, None)
             active.turn.set_status("")
 
+        rule = rule_for(tool_name, tool_input)
         if decision == "always":
-            rule = rule_for(tool_name, tool_input)
             active.session_allow.append(rule)
             if rule not in conv.allow:
                 conv.allow.append(rule)
                 self._store.put(conv)
+        self._record(
+            active,
+            tool_name,
+            tool_input,
+            verdict="prompt",
+            outcome=decision,
+            matched=None,
+            dangerous=dangerous,
+        )
         label = {
             "allow": "✅ Aprovado",
-            "always": f"🔁 Aprovado — sempre nesta sessão ({rule_for(tool_name, tool_input)})",
+            "always": f"🔁 Aprovado — sempre nesta sessão ({rule})",
             "deny": "❌ Negado",
             "cancel": "⏹ Cancelado",
         }[decision]

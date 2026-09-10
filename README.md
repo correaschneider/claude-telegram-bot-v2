@@ -73,12 +73,18 @@ Bot API 10.x.
 ## 🛡️ Política de permissão
 
 Regras *ask* do Claude Code são avaliadas **antes** das *allow* — inclusive das globais do
-seu `~/.claude/settings.json`. O bot passa `--settings '{"permissions":{"ask":["Bash"]}}'` e
-todo `Bash` cai na mesa dele, que decide em três degraus:
+seu `~/.claude/settings.json` — e antes do `acceptEdits`. O bot passa
+`--settings '{"permissions":{"ask":["Bash","Edit","Write","NotebookEdit"]}}'` e todo comando
+ou escrita de arquivo cai na mesa dele, que decide em três degraus:
 
 1. **Você já aprovou "sempre nesta sessão"** → executa, mesmo se sensível.
-2. **Read-only embutido** (`ls`, `cat`, `git status`…) ou **`allowed_tools` do projeto** → executa, **exceto** comando sensível.
+2. **Read-only embutido** (`ls`, `cat`, `git status`…), **`Edit`/`Write`** ou **`allowed_tools` do projeto** → executa, **exceto** se for sensível: comando que casa um padrão (`rm`, `git push`, `DROP TABLE`, `curl | sh`, `kubectl delete`…) ou escrita em caminho sensível (`.env`, `~/.ssh`, `/etc`, `*.pem`, `settings.json`…).
 3. Senão → **pergunta** (chat privado) ou **nega** (grupo, guest, job em grupo).
+
+As três listas vivem em **`permissions.json`** (copie de `permissions.example.json`; recarregado
+sozinho quando muda). Toda decisão vai pro `.decisions.jsonl`, e **`/audit`** resume: o que foi
+perguntado e sempre aprovado vira botão *"➕ adicionar ao projeto"*, que grava a regra no
+`projects.json`.
 
 ## ⚙️ Quick start
 

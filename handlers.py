@@ -16,6 +16,7 @@ from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from aiogram.utils.deep_linking import create_start_link
 
+import audit
 from formatting import format_elapsed
 from media import (
     TRANSCRIPT_HEADER,
@@ -370,6 +371,32 @@ async def on_allow(message: Message, command: CommandObject, services: Services)
         + ("\n".join(conv.allow) if conv.allow else "—")
         + "\n\n/allow clear apaga."
     )
+
+
+@router.message(Command("audit"))
+async def on_audit(message: Message, command: CommandObject, services: Services) -> None:
+    conv, _ = conversation_of(services, message)
+    limit = int(command.args) if command.args and command.args.isdigit() else 200
+    entries = audit.load(services.cfg.decisions_file, project=conv.project, limit=limit)
+    summary = audit.summarize(entries)
+    text = audit.render(summary, conv.project)
+    picks = [(conv.project, c.rule) for c in summary.candidates[:8]]
+    services.state.audit_picks[message.chat.id] = picks
+    kb = (
+        InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=f"➕ {i + 1}. {rule} → {alias}"[:60], callback_data=f"audit:{i}"
+                    )
+                ]
+                for i, (alias, rule) in enumerate(picks)
+            ]
+        )
+        if picks
+        else None
+    )
+    await message.answer(text, reply_markup=kb)
 
 
 # ---- entrada → turno ----

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from claude_stream import RunSpec
 from config import Config
+from permissions import PolicyLoader
 from projects import ProjectRegistry
 from store import Conversation, ConversationStore
 from turn import RunningClaude, Turn
@@ -46,6 +47,9 @@ class RuntimeState:
     active: dict[str, ActiveTurn] = field(default_factory=dict)  # conv.key → turno
     by_token: dict[str, ActiveTurn] = field(default_factory=dict)
     session_picks: dict[int, list[dict]] = field(default_factory=dict)  # /sessions por chat
+    audit_picks: dict[int, list[tuple[str, str]]] = field(
+        default_factory=dict
+    )  # /audit: (alias, regra)
 
 
 @dataclass
@@ -63,6 +67,7 @@ class Services:
     bot_username: str
     bot_id: int
     projects: ProjectRegistry
+    policy: PolicyLoader
     store: ConversationStore
     runner: ClaudeRunner
     state: RuntimeState

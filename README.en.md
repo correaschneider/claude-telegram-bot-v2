@@ -74,12 +74,18 @@ is the only Python library exposing Bot API 10.x.
 ## 🛡️ Permission policy
 
 Claude Code evaluates *ask* rules **before** *allow* rules — including the global ones in
-your `~/.claude/settings.json`. The bot passes `--settings '{"permissions":{"ask":["Bash"]}}'`
-so every `Bash` call lands on the bot's desk, which decides in three steps:
+your `~/.claude/settings.json` — and before `acceptEdits`. The bot passes
+`--settings '{"permissions":{"ask":["Bash","Edit","Write","NotebookEdit"]}}'` so every command
+and file write lands on the bot's desk, which decides in three steps:
 
 1. **You already approved "always in this session"** → run, even if sensitive.
-2. **Built-in read-only set** (`ls`, `cat`, `git status`…) or the project's **`allowed_tools`** → run, **except** sensitive commands.
+2. **Built-in read-only set** (`ls`, `cat`, `git status`…), **`Edit`/`Write`**, or the project's **`allowed_tools`** → run, **except** when sensitive: a command matching a pattern (`rm`, `git push`, `DROP TABLE`, `curl | sh`, `kubectl delete`…) or a write to a sensitive path (`.env`, `~/.ssh`, `/etc`, `*.pem`, `settings.json`…).
 3. Otherwise → **ask** (private chat) or **deny** (group, guest, job in a group).
+
+The three lists live in **`permissions.json`** (copy from `permissions.example.json`; reloaded
+automatically on change). Every decision goes to `.decisions.jsonl`, and **`/audit`** summarizes
+it: whatever was asked and always approved becomes a *"➕ add to project"* button that writes
+the rule into `projects.json`.
 
 ## ⚙️ Quick start
 

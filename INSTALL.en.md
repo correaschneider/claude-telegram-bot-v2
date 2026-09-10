@@ -147,11 +147,33 @@ with `/new <alias>`.
 
 ### 4.3 Claude Code — global permissions
 
-The bot passes `--settings '{"permissions":{"ask":["Bash"]}}'` on every turn: *ask* rules
-are evaluated before *allow* rules, so **every `Bash` call reaches the bot's desk** even if
-your `~/.claude/settings.json` has `allow: ["Bash"]`. You don't need to touch your global
-rules; what the bot auto-approves is the built-in read-only set + the project's
-`allowed_tools` + whatever you marked as "Always in this session".
+The bot passes `--settings '{"permissions":{"ask":["Bash","Edit","Write","NotebookEdit"]}}'`
+on every turn: *ask* rules are evaluated before *allow* rules and before `acceptEdits`, so
+**every command and every file write reaches the bot's desk** even if your
+`~/.claude/settings.json` has `allow: ["Bash"]`. You don't need to touch your global rules;
+what the bot auto-approves is the read-only set + `Edit`/`Write` + the project's
+`allowed_tools` + whatever you marked as "Always in this session" — never anything sensitive.
+
+### 4.4 `permissions.json` and `/audit`
+
+```bash
+cp permissions.example.json permissions.json     # optional: without the file the defaults apply
+```
+
+| Key | What |
+|---|---|
+| `read_only` | rules (`--allowedTools` syntax) auto-approved in every project: `Bash(ls *)`, `Bash(git status *)`… |
+| `dangerous` | case-insensitive regexes over the Bash command that **always ask**: `\brm\b`, `\bgit\b.*\bpush\b`, `\bdelete\s+from\b`… |
+| `sensitive_paths` | globs (`fnmatch`, `*` matches `/`) of paths where `Edit`/`Write` always ask: `*/.env`, `*/.ssh/*`, `/etc/*`… |
+
+Each key present **replaces** the whole default list (copy the example and edit). The file is
+reloaded automatically when its mtime changes; invalid JSON keeps the previous policy and logs
+a warning.
+
+Every decision (auto, approved, "always", denied) goes to `.decisions.jsonl`. `/audit [n]`
+summarizes the last *n* (default 200) for the current project and offers **➕** buttons for
+rules you approved by hand repeatedly without ever denying — one tap writes the rule into the
+project's `allowed_tools` in `projects.json`, no restart needed.
 
 ## 5. Running
 

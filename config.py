@@ -46,6 +46,8 @@ class Config:
 
     store_file: str
     jobs_file: str
+    permissions_file: str  # listas read-only/sensível/caminhos (opcional; defaults embutidos)
+    decisions_file: str  # log de decisões de permissão (/audit)
     default_tz: str
     session_ttl: int
     yolo_ttl: int
@@ -98,6 +100,8 @@ class Config:
             or DEFAULT_SYSTEM_PROMPT,
             store_file=env.get("STORE_FILE") or os.path.join(cwd, ".store.json"),
             jobs_file=env.get("JOBS_FILE") or os.path.join(cwd, ".jobs.json"),
+            permissions_file=env.get("PERMISSIONS_FILE") or os.path.join(cwd, "permissions.json"),
+            decisions_file=env.get("DECISIONS_FILE") or os.path.join(cwd, ".decisions.jsonl"),
             default_tz=env.get("DEFAULT_TZ", "America/Sao_Paulo"),
             session_ttl=int(env.get("SESSION_TTL_SECONDS", str(6 * 3600))),
             yolo_ttl=int(env.get("YOLO_TTL_SECONDS", "3600")),
