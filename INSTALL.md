@@ -82,7 +82,7 @@ from an unauthorized chat is logged with its id:
 
 ```bash
 journalctl --user -u claude-telegram-bot-v2 -n 50 --no-pager -o cat | grep "update ignorado"
-# → update ignorado: chat=-1003922999755 user=8778203590
+# → update ignorado: chat=-1001234567890 user=123456789
 ```
 
 Private chat = positive id (= your user id). Group = negative id (`-100…`; it changes when a

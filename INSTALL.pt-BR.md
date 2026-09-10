@@ -80,7 +80,7 @@ chat não autorizado é registrada com o id:
 
 ```bash
 journalctl --user -u claude-telegram-bot-v2 -n 50 --no-pager -o cat | grep "update ignorado"
-# → update ignorado: chat=-1003922999755 user=8778203590
+# → update ignorado: chat=-1001234567890 user=123456789
 ```
 
 Chat privado = id positivo (= seu user id). Grupo = id negativo (`-100…`, muda se um grupo
