@@ -61,6 +61,26 @@ async def download_audio(bot: Bot, message: Message, audio_dir: str) -> str:
     return path
 
 
+def is_video(message: Message) -> bool:
+    return bool(
+        message.video
+        or message.video_note
+        or (message.document and (message.document.mime_type or "").startswith("video/"))
+    )
+
+
+async def download_video(bot: Bot, message: Message, video_dir: str) -> str:
+    """Baixa o vídeo (Bot API limita a 20 MB — acima disso o Telegram recusa o getFile)."""
+    media = message.video or message.video_note or message.document
+    assert media is not None
+    name = getattr(media, "file_name", None) or ""
+    ext = os.path.splitext(name)[1] or ".mp4"
+    path = os.path.join(video_dir, f"{media.file_unique_id}{ext}")
+    os.makedirs(video_dir, exist_ok=True)
+    await bot.download(media.file_id, destination=path)
+    return path
+
+
 def is_transcript_echo(message: Message, bot_id: int) -> bool:
     user = message.from_user
     return bool(

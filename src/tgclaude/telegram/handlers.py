@@ -28,10 +28,13 @@ from tgclaude.telegram.media import (
     build_reply_context,
     download_audio,
     download_image,
+    download_video,
     is_image,
+    is_video,
     with_reply_context,
 )
 from tgclaude.telegram.sink import TelegramSink
+from tgclaude.tools import video
 from tgclaude.tools.scheduler import describe
 
 log = logging.getLogger("claude-bot")
@@ -477,6 +480,71 @@ async def on_voice(message: Message, services: Services) -> None:
         return
     await message.answer(f"{TRANSCRIPT_HEADER} {text}")
     await _start_turn(services, message, conv, text)
+
+
+@router.message(is_video)
+async def on_video(message: Message, services: Services) -> None:
+    conv = await _conversation_ready(services, message)
+    if conv is None:
+        return
+    cfg = services.cfg
+    status = await message.answer("🎬 Baixando o vídeo…")
+
+    async def step(text: str) -> None:
+        with contextlib.suppress(TelegramBadRequest):
+            await status.edit_text(text)
+        with contextlib.suppress(TelegramBadRequest):
+            await services.bot.send_chat_action(
+                message.chat.id, "typing", message_thread_id=conv.topic_id or None
+            )
+
+    try:
+        path = await download_video(services.bot, message, cfg.video_tmp_dir)
+    except TelegramBadRequest as e:
+        await step(
+            "❌ O Telegram não deixou baixar o vídeo (limite da Bot API: 20 MB). "
+            "Corte/comprima ou mande um link."
+            if "too big" in str(e).lower()
+            else f"❌ Falha ao baixar o vídeo: {str(e)[:150]}"
+        )
+        return
+
+    wav = f"{os.path.splitext(path)[0]}.wav"
+    try:
+        duration, tracks = await video.probe(path)
+        await step(f"🎬 {video.fmt_ts(duration)} · extraindo áudio…")
+        await video.extract_audio(path, wav, tracks)
+        await step(f"🎬 {video.fmt_ts(duration)} · transcrevendo…")
+        text, segments = await services.transcriber.transcribe_segments(wav)
+        if not text:
+            await step("🤷 Não identifiquei fala no vídeo.")
+            return
+        txt_path, _ = video.write_transcripts(path, text, segments)
+        await step(f"🎬 {video.fmt_ts(duration)} · {len(segments)} trechos · escolhendo momentos…")
+        moments = await video.select_moments(
+            cfg.claude_bin,
+            segments,
+            duration,
+            max_moments=cfg.video_max_moments,
+            cwd=cfg.video_tmp_dir,
+        )
+        await step(f"🎬 {video.fmt_ts(duration)} · {len(moments)} momentos · extraindo prints…")
+        moments = await video.extract_frames(path, moments, duration)
+        n_img = sum(1 for m in moments if m.image)
+        await step(
+            f"🎬 {video.fmt_ts(duration)} · {len(moments)} momentos · {n_img} prints prontos"
+        )
+    except Exception as e:  # noqa: BLE001 — ffmpeg/whisperx/claude: avisa e não roda turno
+        log.exception("pipeline de vídeo falhou")
+        await step(f"❌ Falha ao processar o vídeo: {str(e)[:200]}")
+        return
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(wav)
+
+    await message.answer(f"{TRANSCRIPT_HEADER} {text[:300]}{'…' if len(text) > 300 else ''}")
+    prompt = video.digest_prompt((message.caption or "").strip(), path, duration, txt_path, moments)
+    await _start_turn(services, message, conv, prompt)
 
 
 @router.message(is_image)

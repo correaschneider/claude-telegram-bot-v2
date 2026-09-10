@@ -47,6 +47,11 @@ DEFAULT_READ_ONLY = [
     "Bash(docker logs *)",
     "Bash(systemctl --user status *)",
     "Bash(journalctl *)",
+    # mídia local (skill /video-digest: prints por timestamp + sanidade dos frames)
+    "Bash(ffmpeg *)",
+    "Bash(ffprobe *)",
+    "Bash(identify *)",
+    "Bash(mkdir *)",
 ]
 
 # Regexes (case-insensitive) sobre o comando Bash. Sensível = sempre pergunta, mesmo que

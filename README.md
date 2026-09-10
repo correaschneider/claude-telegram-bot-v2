@@ -63,6 +63,7 @@ is the only Python library exposing Bot API 10.x.
 | 📝 **Rich Messages** | Headings, tables, code, task lists. The "reasoning" between tools goes into a collapsible `<details>`; the answer stays clean. Automatic HTML fallback. |
 | ☑️ **Live checklist** | `update_checklist` tool: Claude registers the plan and ticks steps in a message edited in place. |
 | 🎤 **Voice** | **Resident** WhisperX `large-v3` (model loaded once, ~0.5 s per audio, unloads when idle). Echoes `📝 Transcribed:` before answering. |
+| 🎬 **Video** | Video/video note/document → audio extracted (multi-track mixed), transcribed by the resident WhisperX with timestamps, Claude picks the key moments (structured output), ffmpeg grabs one frame per moment (uniform/blank frames detected via ImageMagick standard deviation and retried at ±5/10 s), then the normal turn gets transcript + frames and answers with summary + per-moment sections; the frames are delivered automatically. Bot API limit: 20 MB per file. |
 | 🖼️ **Images** | Photo or image document → Claude opens it with `Read`. The caption is the request. |
 | ↩️ **Reply** | Replying to a message (text, transcript, image, selected quote) puts its content into the prompt. |
 | ❓ **Questions with buttons** | `ask_user(question, options, multi)` tool: single or multiple choice; Claude continues with the answer. |

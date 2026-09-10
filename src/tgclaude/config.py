@@ -74,6 +74,8 @@ class Config:
     whisperx_lock: str
     audio_tmp_dir: str
     image_tmp_dir: str
+    video_tmp_dir: str  # vídeo + transcrição + prints ficam aqui
+    video_max_moments: int  # teto de momentos-chave (prints) por vídeo
 
     @classmethod
     def from_env(cls) -> Config:
@@ -124,4 +126,6 @@ class Config:
             whisperx_lock=env.get("WHISPERX_LOCK", "/tmp/whisperx-pipeline.lock"),
             audio_tmp_dir=env.get("AUDIO_TMP_DIR", "/tmp/telegram-audio"),
             image_tmp_dir=env.get("IMAGE_TMP_DIR", "/tmp/telegram-images"),
+            video_tmp_dir=env.get("VIDEO_TMP_DIR", "/tmp/telegram-videos"),
+            video_max_moments=int(env.get("VIDEO_MAX_MOMENTS", "8")),
         )

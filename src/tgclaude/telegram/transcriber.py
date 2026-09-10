@@ -25,6 +25,11 @@ class WhisperXTranscriber:
         self._cfg = cfg
 
     async def transcribe(self, audio_path: str) -> str:
+        text, _ = await self.transcribe_segments(audio_path)
+        return text
+
+    async def transcribe_segments(self, audio_path: str) -> tuple[str, list[dict]]:
+        """(texto corrido, segments [{start, end, text}] em segundos)."""
         if self._cfg.whisperx_server_url:
             try:
                 return await self._via_server(audio_path)
@@ -34,7 +39,7 @@ class WhisperXTranscriber:
                 log.warning("whisperx-server inalcançável (%s); usando CLI", str(e)[:200])
         return await self._via_cli(audio_path)
 
-    async def _via_server(self, audio_path: str) -> str:
+    async def _via_server(self, audio_path: str) -> tuple[str, list[dict]]:
         c = self._cfg
         timeout = aiohttp.ClientTimeout(total=600, connect=3)
         async with (
@@ -48,14 +53,14 @@ class WhisperXTranscriber:
             if resp.status != 200:
                 raise RuntimeError(body.get("error") or f"HTTP {resp.status}")
             log.info("whisperx-server: %.2fs", body.get("seconds", 0))
-            return str(body.get("text", "")).strip()
+            return str(body.get("text", "")).strip(), list(body.get("segments") or [])
 
     def _flock_prefix(self) -> list[str]:
         if self._cfg.whisperx_lock and shutil.which("flock"):
             return ["flock", "-x", self._cfg.whisperx_lock]
         return []
 
-    async def _via_cli(self, audio_path: str) -> str:
+    async def _via_cli(self, audio_path: str) -> tuple[str, list[dict]]:
         c = self._cfg
         Path(c.audio_tmp_dir).mkdir(parents=True, exist_ok=True)
         out_dir = tempfile.mkdtemp(prefix="whisperx_", dir=c.audio_tmp_dir)
@@ -85,6 +90,14 @@ class WhisperXTranscriber:
                 raise RuntimeError("whisperx não produziu JSON")
             with open(json_files[0], encoding="utf-8") as f:
                 result = json.load(f)
-            return " ".join(s.get("text", "").strip() for s in result.get("segments", [])).strip()
+            segments = [
+                {
+                    "start": round(float(s.get("start", 0.0)), 3),
+                    "end": round(float(s.get("end", 0.0)), 3),
+                    "text": str(s.get("text", "")).strip(),
+                }
+                for s in result.get("segments", [])
+            ]
+            return " ".join(s["text"] for s in segments if s["text"]).strip(), segments
         finally:
             shutil.rmtree(out_dir, ignore_errors=True)

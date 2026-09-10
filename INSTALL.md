@@ -29,7 +29,8 @@ and a `claude -p "hi"` in the terminal must work). MCP servers configured for th
 |---|---|
 | **NVIDIA GPU** + driver with CUDA 12.x | WhisperX `large-v3` in float16 uses ~3.9 GB of VRAM; CPU works, but slowly |
 | **WhisperX** in its own venv (`~/whisperx/.venv`) | transcription (section 6) |
-| **ffmpeg** | WhisperX uses it to decode Telegram's `.ogg` |
+| **ffmpeg** + **ffprobe** | decodes Telegram's `.ogg`; **required for video** (audio extraction and frame grabs) |
+| **ImageMagick** (`identify`) | optional: detects uniform/blank frames (standard deviation) in the video digest; without it, JPG size is used |
 | **`flock`** (util-linux) | serializes transcriptions so they don't blow the VRAM; without it, runs unlocked |
 
 ```bash
@@ -151,7 +152,8 @@ cp .env.example .env && chmod 600 .env
 | `MCP_TOOL_TIMEOUT_MS` | | `86400000` (24 h) | how long Claude waits for your approval/answer |
 | `WHISPERX_SERVER_URL` | | `http://127.0.0.1:8765` | resident server (section 6); empty = CLI only |
 | `WHISPERX_BIN` · `WHISPERX_MODEL` · `WHISPERX_DEVICE` · `WHISPERX_COMPUTE_TYPE` · `WHISPERX_LANGUAGE` · `WHISPERX_BATCH` · `WHISPERX_LOCK` | | `~/.local/bin/whisperx-cli` · `large-v3` · `cuda` · `float16` · `pt` · `8` · `/tmp/whisperx-pipeline.lock` | fallback CLI |
-| `AUDIO_TMP_DIR` · `IMAGE_TMP_DIR` | | `/tmp/telegram-audio` · `/tmp/telegram-images` | downloads (audio is deleted after transcription; images stay for follow-ups) |
+| `AUDIO_TMP_DIR` · `IMAGE_TMP_DIR` · `VIDEO_TMP_DIR` | | `/tmp/telegram-audio` · `/tmp/telegram-images` · `/tmp/telegram-videos` | downloads (audio is deleted after transcription; images and videos stay — the video dir also holds `<stem>.transcript.txt/.json` and `<stem>.moments/*.jpg`) |
+| `VIDEO_MAX_MOMENTS` | | `8` | cap of key moments (frames) per video |
 
 ### 4.2 `projects.json`
 
@@ -309,6 +311,7 @@ smaller model (`medium`, `small`) if it gets too slow.
 | *"create /tmp/x.txt with sh -c"* | 🔐 card with buttons; **Approve** runs it |
 | *"delete /tmp/x.txt with rm"* | ⚠️ sensitive card; needs **2 taps** |
 | voice note | `📝 Transcribed:` echo in ~1 s (server) and the turn starts |
+| a short video | status message advancing (`extracting audio → transcribing → picking moments → frames`), then summary + one section per moment with the frames attached |
 | *"ask me whether I prefer A or B"* | question with buttons |
 | *"every 5 min tell me the time"* | `/jobs` lists it; `/unschedule 1` removes it |
 
@@ -332,6 +335,7 @@ systemctl --user restart whisperx-server
 | 🔐 card never shows up | `/yolo` is on in that topic (`/status` shows it), or the command is in `allowed_tools`/read-only |
 | everything is denied in a group | expected: groups have no approver; put what's needed in the project's `allowed_tools` |
 | `❌ Claude exited without a result (rc=1)` | run `claude -p "hi"` in a terminal as the same user — usually login, or `claude` missing from the unit's `PATH` |
+| video: `The Telegram couldn't download…` (20 MB) | Bot API limit; trim/compress, or run a Local Bot API server |
 | audio takes ~10 s | `whisperx-server` is down or `WHISPERX_SERVER_URL` is empty — `systemctl --user status whisperx-server` |
 | `CUDA failed with error out of memory` | server + CLI at the same time, or another pipeline on the GPU; lower `WHISPERX_IDLE_SECONDS` or use `int8` |
 | audio: `whisperx exit 1 … HF_HUB_OFFLINE` | the first run needs network to download the model |

@@ -69,7 +69,8 @@ class Engine:
                     pass
                 log.info("modelo descarregado por ociosidade (%ds)", IDLE_SECONDS)
 
-    def transcribe(self, path: str, language: str) -> str:
+    def transcribe(self, path: str, language: str) -> tuple[str, list[dict]]:
+        """(texto corrido, segments [{start, end, text}]) — mesmo formato do whisperx CLI."""
         import whisperx
 
         with self._lock:
@@ -87,7 +88,15 @@ class Engine:
                     fcntl.flock(lock_fd, fcntl.LOCK_UN)
                     os.close(lock_fd)
             self._last_used = time.time()
-            return " ".join(s.get("text", "").strip() for s in result.get("segments", [])).strip()
+            segments = [
+                {
+                    "start": round(float(s.get("start", 0.0)), 3),
+                    "end": round(float(s.get("end", 0.0)), 3),
+                    "text": str(s.get("text", "")).strip(),
+                }
+                for s in result.get("segments", [])
+            ]
+            return " ".join(s["text"] for s in segments if s["text"]).strip(), segments
 
     @property
     def loaded(self) -> bool:
@@ -127,14 +136,17 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(400, {"error": f"arquivo não encontrado: {path}"})
                 return
             t = time.time()
-            text = engine.transcribe(path, str(payload.get("language") or LANGUAGE))
+            text, segments = engine.transcribe(path, str(payload.get("language") or LANGUAGE))
             log.info(
-                "transcrito %s em %.2fs (%d chars)",
+                "transcrito %s em %.2fs (%d chars, %d segments)",
                 os.path.basename(path),
                 time.time() - t,
                 len(text),
+                len(segments),
             )
-            self._json(200, {"text": text, "seconds": round(time.time() - t, 2)})
+            self._json(
+                200, {"text": text, "segments": segments, "seconds": round(time.time() - t, 2)}
+            )
         except Exception as e:  # noqa: BLE001
             log.exception("falha na transcrição")
             self._json(500, {"error": str(e)[:500]})
