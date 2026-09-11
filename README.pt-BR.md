@@ -15,7 +15,7 @@
   <img alt="Bot API 10.3" src="https://img.shields.io/badge/Telegram%20Bot%20API-10.3-26A5E4?logo=telegram&logoColor=white">
   <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-headless-D97757">
   <a href="https://github.com/correaschneider/claude-telegram-bot-v2/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/correaschneider/claude-telegram-bot-v2/actions/workflows/ci.yml/badge.svg"></a>
-  <img alt="license" src="https://img.shields.io/badge/uso-pessoal-lightgrey">
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/licença-MIT-green"></a>
 </p>
 
 ---

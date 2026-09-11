@@ -3,6 +3,8 @@ name = "claude-telegram-bot-v2"
 version = "0.1.0"
 description = "Bot de Telegram (aiogram) que faz streaming das respostas do Claude Code via sendMessageDraft"
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "aiogram==3.31.0",
     "python-dotenv==1.2.2",
