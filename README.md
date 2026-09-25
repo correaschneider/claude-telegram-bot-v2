@@ -69,6 +69,7 @@ is the only Python library exposing Bot API 10.x.
 | ❓ **Questions with buttons** | `ask_user(question, options, multi)` tool: single or multiple choice; Claude continues with the answer. |
 | 📎 **Files** | png/pdf/mp3/mp4 mentioned by absolute path arrive on their own; the `send_file` tool delivers any file. |
 | ⏰ **Schedules** | `schedule` tool (5-field cron or `every_seconds`): fires in the originating topic with its own session. `/jobs`, `/unschedule`. |
+| 🧰 **Claude skills as commands** | Your Claude Code skills and custom commands (`~/.claude/skills`, `~/.claude/commands`, plus the project's `.claude/`) show up in Telegram: the **native menu** carries the global ones and **`/skills [filter]`** lists the ones for the current topic's project. Telegram only allows `[a-z0-9_]` in a command, so `/factory-cr` appears as `/factory_cr` and the bot translates it back before handing the prompt to Claude. |
 | 🔗 **Deep links** | `/link habilis` or `/link HT-123` → `t.me/<bot>?start=…` opens a topic already in the right project. |
 | 👥 **Groups / guest mode** | In allowed groups, triggered by a **reply** to a bot message, by **`/ask <question>`**, or by a mention (`@bot` only arrives with *Group Privacy* off — Telegram doesn't deliver mentions in privacy mode). Without being a member, via guest mode. **Ephemeral** answer visible only to the asker (`#todos` = public; ephemeral requires the bot to be a group **admin** — otherwise it answers publicly, as a reply). Groups never get approval prompts: anything outside the allowlist is denied. In a **channel** (bot as admin), a post with `/ask …` gets a public reply. |
 
@@ -122,7 +123,7 @@ flowchart LR
 ```
 
 Ports & adapters: the core (`core/turn.py`) only knows `RunningClaude` (events) and
-`DraftSink` (draft/delivery). That's why the 19 tests run without a token, network or GPU —
+`DraftSink` (draft/delivery). That's why the 28 tests run without a token, network or GPU —
 and the real flows (approve, deny, "always", groups, questions, schedules, files) were
 validated end to end against the real Claude.
 

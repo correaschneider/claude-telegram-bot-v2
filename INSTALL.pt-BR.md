@@ -44,7 +44,7 @@ sudo apt install -y ffmpeg util-linux git
 git clone git@github.com:correaschneider/claude-telegram-bot-v2.git
 cd claude-telegram-bot-v2
 uv sync                       # cria .venv, instala o pacote tgclaude (editável) e as deps (+ ruff, pytest)
-uv run pytest                      # 19 testes, sem token nem rede — confirma que o ambiente está são
+uv run pytest                      # 28 testes, sem token nem rede — confirma que o ambiente está são
 ```
 
 ## 3. Bot no Telegram (@BotFather)
@@ -65,7 +65,13 @@ uv run pytest                      # 19 testes, sem token nem rede — confirma 
 > Ligar tópicos faz o Telegram reter 15% de compras em **Stars** dentro do bot. Irrelevante
 > pra um bot pessoal, mas é por isso que vem desligado.
 
-Os comandos do menu (`/status`, `/new`…) o próprio bot registra ao subir (`setMyCommands`).
+Os comandos do menu (`/status`, `/new`…) o próprio bot registra ao subir (`setMyCommands`),
+junto com as suas skills/commands **globais** do Claude Code (lidas de `$CLAUDE_CONFIG_DIR` ou
+`~/.claude`), respeitando o teto de 100 do Telegram. Nome com `-` ou `:` entra com `_`
+(`/factory-cr` → `/factory_cr`) e é traduzido de volta antes do prompt chegar ao Claude; nome que
+colide com comando do bot é pulado. O menu é por chat, não por tópico, então as skills de projeto
+ficam no **`/skills [filtro]`**, que lê o `.claude/` do projeto do tópico atual. Skill nova no
+disco só precisa de restart pro *menu* — `/skills` e a tradução leem do disco a cada uso.
 
 ### 3.1 Descobrir o seu `chat_id`
 

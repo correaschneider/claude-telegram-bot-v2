@@ -17,6 +17,7 @@ from tgclaude.claude.stream import SubprocessRunner
 from tgclaude.config import Config
 from tgclaude.core.permissions import PolicyLoader
 from tgclaude.core.projects import ProjectRegistry
+from tgclaude.core.skills import build_registry, discover
 from tgclaude.core.store import ConversationStore
 from tgclaude.services import Bridge, RuntimeState, Services
 from tgclaude.telegram import callbacks, group, handlers
@@ -29,28 +30,27 @@ from tgclaude.tools.server import BridgeServer
 log = logging.getLogger("claude-bot")
 
 
+MAX_MENU_COMMANDS = 100  # teto do setMyCommands
+
+
+def menu_commands(project_path: str | None) -> list[BotCommand]:
+    """Comandos do bot + skills/commands GLOBAIS do Claude Code (o menu é por chat, não por
+    tópico, então o que é de projeto fica só no /skills)."""
+    reserved = {c.command for c in handlers.COMMANDS}
+    entries = [e for e in discover(project_path) if e.scope == "global"]
+    by_name = {e.name: e for e in entries}
+    extra = [
+        BotCommand(command=tg, description=by_name[real].description[:256])
+        for tg, real in build_registry(entries, reserved=reserved).items()
+    ]
+    return (handlers.COMMANDS + extra)[:MAX_MENU_COMMANDS]
+
+
 def bridge_script_path() -> str:
     """Caminho do mcp_bridge.py sem importá-lo (ele lê TG_* do ambiente ao carregar)."""
     spec = importlib.util.find_spec("tgclaude.claude.mcp_bridge")
     assert spec and spec.origin
     return spec.origin
-
-
-COMMANDS = [
-    BotCommand(command="status", description="Projeto, sessão, yolo, regras, agendamentos"),
-    BotCommand(command="project", description="Trocar o projeto desta conversa"),
-    BotCommand(command="new", description="Tópico novo: /new <alias> [título]"),
-    BotCommand(command="fork", description="Bifurcar a sessão atual num tópico novo"),
-    BotCommand(command="sessions", description="Retomar uma sessão recente do Claude Code"),
-    BotCommand(command="reset", description="Zerar a sessão do Claude"),
-    BotCommand(command="cancel", description="Interromper o turno em execução"),
-    BotCommand(command="yolo", description="Pular aprovações por N min: /yolo [min]"),
-    BotCommand(command="allow", description="Regras aprovadas aqui (/allow clear)"),
-    BotCommand(command="audit", description="Decisões de permissão recentes → promover regras"),
-    BotCommand(command="jobs", description="Agendamentos deste chat"),
-    BotCommand(command="unschedule", description="Remover agendamento: /unschedule <id>"),
-    BotCommand(command="link", description="Deep link: /link <alias|HT-123>"),
-]
 
 
 async def run() -> None:
@@ -102,10 +102,11 @@ async def run() -> None:
         callbacks.router, handlers.router, group.router, group.guest_router, group.channel_router
     )
 
-    await bot.set_my_commands(COMMANDS)
+    commands = menu_commands(services.projects.default.path)
+    await bot.set_my_commands(commands)
     scheduler.start()
     log.info(
-        "bot @%s no ar; projetos=%s; chats=%s; users=%s; topics=%s guest=%s; jobs=%d",
+        "bot @%s no ar; projetos=%s; chats=%s; users=%s; topics=%s guest=%s; jobs=%d; menu=%d",
         me.username,
         [p.alias for p in services.projects.all()],
         sorted(cfg.allowed_chat_ids),
@@ -113,6 +114,7 @@ async def run() -> None:
         getattr(me, "has_topics_enabled", None),
         getattr(me, "supports_guest_queries", None),
         len(scheduler.store.jobs),
+        len(commands),
     )
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())

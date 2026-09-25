@@ -13,14 +13,15 @@ from aiogram import BaseMiddleware, F, Router
 from aiogram.enums import ChatType
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
+from aiogram.types import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from aiogram.utils.deep_linking import create_start_link
 
 from tgclaude.claude.runner import is_busy, run_turn
 from tgclaude.claude.sessions_index import list_recent_sessions
 from tgclaude.core import audit
-from tgclaude.core.formatting import format_elapsed
+from tgclaude.core.formatting import chunk_markdown, format_elapsed
 from tgclaude.core.projects import Project
+from tgclaude.core.skills import build_registry, discover, render, rewrite_command
 from tgclaude.core.store import Conversation
 from tgclaude.services import Services
 from tgclaude.telegram.media import (
@@ -36,6 +37,24 @@ from tgclaude.telegram.media import (
 from tgclaude.telegram.sink import TelegramSink
 from tgclaude.tools import video
 from tgclaude.tools.scheduler import describe
+
+COMMANDS = [
+    BotCommand(command="status", description="Projeto, sessão, yolo, regras, agendamentos"),
+    BotCommand(command="project", description="Trocar o projeto desta conversa"),
+    BotCommand(command="new", description="Tópico novo: /new <alias> [título]"),
+    BotCommand(command="fork", description="Bifurcar a sessão atual num tópico novo"),
+    BotCommand(command="sessions", description="Retomar uma sessão recente do Claude Code"),
+    BotCommand(command="reset", description="Zerar a sessão do Claude"),
+    BotCommand(command="cancel", description="Interromper o turno em execução"),
+    BotCommand(command="yolo", description="Pular aprovações por N min: /yolo [min]"),
+    BotCommand(command="allow", description="Regras aprovadas aqui (/allow clear)"),
+    BotCommand(command="skills", description="Skills do Claude neste projeto: /skills [filtro]"),
+    BotCommand(command="audit", description="Decisões de permissão recentes → promover regras"),
+    BotCommand(command="jobs", description="Agendamentos deste chat"),
+    BotCommand(command="unschedule", description="Remover agendamento: /unschedule <id>"),
+    BotCommand(command="link", description="Deep link: /link <alias|HT-123>"),
+]
+BOT_COMMAND_NAMES = {c.command for c in COMMANDS}
 
 log = logging.getLogger("claude-bot")
 router = Router(name="private")
@@ -183,7 +202,7 @@ async def on_start(message: Message, services: Services) -> None:
         "Bot v2 — streaming do Claude Code.\n"
         f"Projeto desta conversa: {conv.project}\n\n"
         "Texto, voz, imagem ou vídeo. Responder a uma mensagem inclui ela no contexto.\n"
-        "/project · /new <alias> · /fork · /sessions · /status · /reset · /cancel\n"
+        "/project · /new <alias> · /fork · /sessions · /skills · /status · /reset · /cancel\n"
         "/yolo [min] · /allow · /link · /jobs · /unschedule <id>"
     )
 
@@ -413,6 +432,15 @@ async def on_audit(message: Message, command: CommandObject, services: Services)
     await message.answer(text, reply_markup=kb)
 
 
+@router.message(Command("skills"))
+async def on_skills(message: Message, command: CommandObject, services: Services) -> None:
+    conv, _ = conversation_of(services, message)
+    project = services.projects.get_or_default(conv.project)
+    text = render(discover(project.path), project.alias, command.args or "")
+    for chunk in chunk_markdown(text):
+        await message.answer(chunk, parse_mode="HTML")
+
+
 # ---- entrada → turno ----
 
 
@@ -451,7 +479,16 @@ async def _conversation_ready(services: Services, message: Message) -> Conversat
 async def on_text(message: Message, services: Services) -> None:
     conv = await _conversation_ready(services, message)
     if conv:
-        await _start_turn(services, message, conv, message.text or "")
+        await _start_turn(services, message, conv, skill_prompt(services, conv, message.text or ""))
+
+
+def skill_prompt(services: Services, conv: Conversation, text: str) -> str:
+    """`/factory_cr …` (nome do menu) → `/factory-cr …` (nome que o Claude Code expande)."""
+    if not text.startswith("/"):
+        return text
+    project = services.projects.get_or_default(conv.project)
+    registry = build_registry(discover(project.path), reserved=BOT_COMMAND_NAMES)
+    return rewrite_command(text, registry, bot_username=services.bot_username)
 
 
 @router.message(F.voice | F.audio)

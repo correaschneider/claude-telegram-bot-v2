@@ -45,7 +45,7 @@ sudo apt install -y ffmpeg util-linux git
 git clone git@github.com:correaschneider/claude-telegram-bot-v2.git
 cd claude-telegram-bot-v2
 uv sync                       # creates .venv, installs the tgclaude package (editable) and deps (+ ruff, pytest)
-uv run pytest                      # 19 tests, no token, no network — confirms the environment is sane
+uv run pytest                      # 28 tests, no token, no network — confirms the environment is sane
 ```
 
 ## 3. The Telegram bot (@BotFather)
@@ -67,7 +67,13 @@ uv run pytest                      # 19 tests, no token, no network — confirms
 > Irrelevant for a personal bot, but that's why it ships disabled.
 
 The menu commands (`/status`, `/new`…) are registered by the bot itself on startup
-(`setMyCommands`).
+(`setMyCommands`), together with your **global** Claude Code skills/commands (read from
+`$CLAUDE_CONFIG_DIR` or `~/.claude`), up to Telegram's cap of 100. A name with `-` or `:` is
+registered with `_` (`/factory-cr` → `/factory_cr`) and translated back before the prompt reaches
+Claude; a name colliding with a bot command is skipped. The menu is per chat, not per topic, so
+project-scoped skills live in **`/skills [filter]`**, which reads the `.claude/` of the current
+topic's project. A new skill on disk only needs a restart for the *menu* — `/skills` and the
+translation read from disk on every use.
 
 ### 3.1 Find your `chat_id`
 
