@@ -7,6 +7,7 @@ import logging
 import secrets
 from collections.abc import Awaitable, Callable
 
+from aiogram.exceptions import TelegramBadRequest
 from aiohttp import web
 
 from tgclaude.services import ActiveTurn, Services
@@ -56,6 +57,24 @@ async def _t_send_file(services: Services, active: ActiveTurn, args: dict) -> tu
     return f"{n} arquivo(s) enviado(s)", n == 0
 
 
+async def _t_rename_topic(services: Services, active: ActiveTurn, args: dict) -> tuple[str, bool]:
+    conv = active.conv
+    title = " ".join(str(args.get("title") or "").split())[:128]
+    if not title:
+        return "título vazio", True
+    if not conv.topic_id:
+        return "esta conversa não é um tópico (chat geral, grupo ou canal): nada a renomear", True
+    try:
+        await services.bot.edit_forum_topic(conv.chat_id, conv.topic_id, name=title)
+    except TelegramBadRequest as e:
+        return f"o Telegram recusou o rename: {e}", True
+    if conv.auto_title:  # já tem nome escolhido: o runner não sobrescreve no fim do turno
+        conv.auto_title = False
+        services.store.put(conv)
+    log.info("tópico %s renomeado: %s", conv.key, title)
+    return f"tópico renomeado para: {title}", False
+
+
 async def _t_schedule(services: Services, active: ActiveTurn, args: dict) -> tuple[str, bool]:
     try:
         jid, job = services.scheduler.add(active.conv, args)
@@ -75,6 +94,7 @@ TOOLS: dict[str, ToolHandler] = {
     "update_checklist": _t_update_checklist,
     "ask_user": _t_ask_user,
     "send_file": _t_send_file,
+    "rename_topic": _t_rename_topic,
     "schedule": _t_schedule,
     "unschedule": _t_unschedule,
 }

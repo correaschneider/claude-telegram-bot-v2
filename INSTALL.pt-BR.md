@@ -73,11 +73,11 @@ colide com comando do bot é pulado. O menu é por chat, não por tópico, entã
 ficam no **`/skills [filtro]`**, que lê o `.claude/` do projeto do tópico atual. Skill nova no
 disco só precisa de restart pro *menu* — `/skills` e a tradução leem do disco a cada uso.
 
-Tocar num comando do menu **envia na hora**, sem chance de digitar parâmetro. Por isso, quando a
-skill declara `argument-hint:` no frontmatter (ou usa `$ARGUMENTS`/`$1` no corpo), o bot responde
-com um **ForceReply** pedindo só o argumento: responda com o id e ele roda `/skill <id>`; responda
-`-` e ele roda pelado (deixando o Claude perguntar com botões). O hint também entra na descrição
-do menu, aparada em 62 caracteres pro cliente não cortar.
+Tocar num comando do menu **envia na hora**, sem chance de digitar parâmetro — e o bot **não**
+intercepta: o comando vai pelado pro Claude e a própria skill pergunta o que falta com `ask_user`
+(botões), que fica melhor no celular. Se preferir já mandar o argumento, digite `/skill <arg>`.
+O `argument-hint` da skill (quando declarado) entra na descrição do menu, aparada em 62
+caracteres pro cliente não cortar.
 
 ### 3.1 Descobrir o seu `chat_id`
 

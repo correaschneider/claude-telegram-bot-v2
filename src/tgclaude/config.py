@@ -13,6 +13,8 @@ DEFAULT_SYSTEM_PROMPT = (
     "reenvie a lista inteira (done=true nas concluídas) a cada etapa.\n"
     "- mcp__tg__ask_user: quando precisar de uma decisão do usuário entre alternativas claras, "
     "pergunte por aqui (botões) em vez de em texto; espere a resposta antes de seguir.\n"
+    "- mcp__tg__rename_topic: renomeia o tópico atual quando o assunto ficar claro "
+    "(ex.: id + título da task). Faça isso uma vez, cedo, sem perguntar.\n"
     "- mcp__tg__send_file: entrega arquivos ao usuário. Imagens/PDF/áudio/vídeo citados por "
     "caminho absoluto na resposta já são enviados automaticamente; use a tool para .md/.json/.txt.\n"
     "- mcp__tg__schedule / mcp__tg__unschedule: tarefas recorrentes pedidas pelo usuário "

@@ -54,3 +54,31 @@ def test_sessions_encode_and_job_conversation_key():
     assert encode_cwd("/data/projects") == "-data-projects"
     assert Conversation(1, 2, "x").key == "1:2"
     assert Conversation(1, 2, "x", job_id="7").key == "1:2:job7"
+
+
+def test_rename_topic():
+    import asyncio
+    from types import SimpleNamespace
+
+    from tgclaude.tools.server import TOOLS
+
+    calls, saved = [], []
+    bot = SimpleNamespace(
+        edit_forum_topic=lambda chat, thread, name=None: (
+            calls.append((chat, thread, name)) or asyncio.sleep(0)
+        )
+    )
+    services = SimpleNamespace(bot=bot, store=SimpleNamespace(put=saved.append))
+    conv = SimpleNamespace(chat_id=1, topic_id=7, auto_title=True, key="1:7")
+    active = SimpleNamespace(conv=conv)
+    run = TOOLS["rename_topic"]
+
+    text, err = asyncio.run(run(services, active, {"title": "  CU-86ak  |  título \n da task "}))
+    assert not err and calls == [(1, 7, "CU-86ak | título da task")]
+    assert conv.auto_title is False and saved == [conv]  # runner não sobrescreve depois
+
+    assert asyncio.run(run(services, active, {"title": "   "}))[1] is True
+    fora = SimpleNamespace(conv=SimpleNamespace(chat_id=1, topic_id=0, auto_title=False, key="1:0"))
+    text, err = asyncio.run(run(services, fora, {"title": "x"}))
+    assert err and "não é um tópico" in text
+    assert len(calls) == 1  # nenhuma chamada extra ao Telegram

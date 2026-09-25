@@ -75,11 +75,11 @@ project-scoped skills live in **`/skills [filter]`**, which reads the `.claude/`
 topic's project. A new skill on disk only needs a restart for the *menu* — `/skills` and the
 translation read from disk on every use.
 
-Tapping a command in the menu sends it **immediately**, with no chance to type a parameter. So
-when the skill declares `argument-hint:` in its frontmatter (or uses `$ARGUMENTS`/`$1` in the
-body), the bot replies with a **ForceReply** asking only for the argument: answer with the id and
-it runs `/skill <id>`; answer `-` and it runs bare (letting Claude ask with buttons). The hint
-also goes into the menu description, trimmed to 62 chars so the client doesn't cut it.
+Tapping a command in the menu sends it **immediately**, with no chance to type a parameter — the
+bot does **not** intercept that: the command goes bare to Claude and the skill asks for what's
+missing through `ask_user` (buttons), which reads better on a phone. If you'd rather type the
+argument up front, send `/skill <arg>` yourself. The skill's `argument-hint` (when declared) goes
+into the menu description, trimmed to 62 chars so the client doesn't cut it.
 
 ### 3.1 Find your `chat_id`
 

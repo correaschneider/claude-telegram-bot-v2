@@ -15,7 +15,6 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import (
     BotCommand,
-    ForceReply,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
@@ -28,7 +27,7 @@ from tgclaude.claude.sessions_index import list_recent_sessions
 from tgclaude.core import audit
 from tgclaude.core.formatting import chunk_markdown, format_elapsed
 from tgclaude.core.projects import Project
-from tgclaude.core.skills import build_registry, discover, find_entry, render, rewrite_command
+from tgclaude.core.skills import build_registry, discover, render, rewrite_command
 from tgclaude.core.store import Conversation
 from tgclaude.services import Services
 from tgclaude.telegram.media import (
@@ -485,50 +484,21 @@ async def _conversation_ready(services: Services, message: Message) -> Conversat
 @router.message(F.text)
 async def on_text(message: Message, services: Services) -> None:
     conv = await _conversation_ready(services, message)
-    if conv is None:
-        return
-    prompt = await skill_prompt(services, conv, message)
-    if prompt is not None:  # None = pedi o argumento e estou esperando a resposta
-        await _start_turn(services, message, conv, prompt)
+    if conv:
+        await _start_turn(services, message, conv, skill_prompt(services, conv, message.text or ""))
 
 
-SKIP_ARGUMENT = {"-", ".", "—", "sem", "vazio"}
-MAX_PENDING_SKILLS = 20
+def skill_prompt(services: Services, conv: Conversation, text: str) -> str:
+    """`/factory_cr …` (nome do menu) → `/factory-cr …` (nome que o Claude Code expande).
 
-
-async def skill_prompt(services: Services, conv: Conversation, message: Message) -> str | None:
-    """Traduz `/factory_cr` (nome do menu) pra `/factory-cr` (que o Claude Code expande) e,
-    quando a skill pede argumento e o menu mandou o comando pelado, abre um ForceReply em vez
-    de gastar um turno pro Claude perguntar."""
-    text = (message.text or "").strip()
-    pending = services.state.pending_skill
-    if message.reply_to_message:
-        name = pending.pop((message.chat.id, message.reply_to_message.message_id), None)
-        if name:
-            return f"/{name}" if text.lower() in SKIP_ARGUMENT else f"/{name} {text}"
+    Comando sem argumento segue direto pro Claude DE PROPÓSITO: a skill pergunta o que falta
+    com `ask_user` (botões), que é melhor que o bot interceptar com ForceReply.
+    """
     if not text.startswith("/"):
         return text
-
     project = services.projects.get_or_default(conv.project)
-    entries = discover(project.path)
-    registry = build_registry(entries, reserved=BOT_COMMAND_NAMES)
-    rewritten = rewrite_command(text, registry, bot_username=services.bot_username)
-    head, _, rest = rewritten.partition(" ")
-    entry = find_entry(entries, head[1:])
-    if not entry or rest.strip() or not entry.takes_args:
-        return rewritten
-
-    hint = entry.argument_hint or "o argumento (id da task, branch…)"
-    sent = await message.answer(
-        f"❓ <b>/{entry.name}</b> quer <code>{hint}</code>.\n"
-        f"<i>Responda aqui — ou mande «-» pra rodar sem argumento.</i>",
-        parse_mode="HTML",
-        reply_markup=ForceReply(input_field_placeholder=hint[:64], selective=True),
-    )
-    if len(pending) >= MAX_PENDING_SKILLS:
-        pending.pop(next(iter(pending)))
-    pending[(message.chat.id, sent.message_id)] = entry.name
-    return None
+    registry = build_registry(discover(project.path), reserved=BOT_COMMAND_NAMES)
+    return rewrite_command(text, registry, bot_username=services.bot_username)
 
 
 @router.message(F.voice | F.audio)

@@ -10,7 +10,7 @@ streaming da resposta. Pacote `tgclaude` em *src layout*. Docs de produto: `READ
 ```bash
 uv sync --group dev            # venv + pacote editável + ruff/pytest
 uv run ruff format . && uv run ruff check .
-uv run pytest                  # ~36 testes, sem token/rede/GPU (test_bridge sobe o mcp_bridge real)
+uv run pytest                  # ~33 testes, sem token/rede/GPU (test_bridge sobe o mcp_bridge real)
 uv run tgclaude                # rodar na mão (lê .env do cwd)
 systemctl --user restart claude-telegram-bot-v2   # produção nesta máquina
 journalctl --user -u claude-telegram-bot-v2 -f
@@ -26,7 +26,7 @@ roda em push/PR; `main` protegida.
 |---|---|---|
 | `src/tgclaude/core/` | turn, permissions, audit, projects, store, formatting | **sem** Telegram nem subprocesso — testável puro |
 | `src/tgclaude/claude/` | stream (NDJSON → eventos), runner (monta o turno), sessions_index, `mcp_bridge.py` | `mcp_bridge.py` é **stdlib puro** e lê `TG_*` do ambiente ao importar → nunca `import`; caminho via `importlib.util.find_spec` |
-| `src/tgclaude/tools/` | server (HTTP loopback), permission_desk, questions, checklist, delivery, scheduler, video | o que a bridge expõe ao Claude |
+| `src/tgclaude/tools/` | server (HTTP loopback: ask/update_checklist/ask_user/send_file/rename_topic/schedule), permission_desk, questions, checklist, delivery, scheduler, video | o que a bridge expõe ao Claude |
 | `src/tgclaude/telegram/` | sink, handlers, callbacks, group, media, transcriber | adaptadores aiogram |
 | `deploy/` | units systemd + `whisperx_server.py` (roda no venv `~/whisperx/.venv`, não no do bot) | |
 | `tests/` | pytest; fakes em `helpers.py` | |

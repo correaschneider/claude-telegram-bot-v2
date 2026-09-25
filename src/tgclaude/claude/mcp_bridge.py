@@ -76,6 +76,15 @@ TOOLS = [
         "inputSchema": _obj({"paths": {"type": "array", "items": {"type": "string"}}}, ["paths"]),
     },
     {
+        "name": "rename_topic",
+        "description": (
+            "Renomeia o tópico atual do Telegram (até 128 caracteres). Use quando o assunto da "
+            "conversa ficar claro — ex.: 'CU-86ak… | título da task'. Só vale em tópico de chat "
+            "privado; em grupo/canal devolve erro."
+        ),
+        "inputSchema": _obj({"title": {"type": "string"}}, ["title"]),
+    },
+    {
         "name": "schedule",
         "description": (
             "Agenda um prompt recorrente neste chat. Use `cron` (5 campos) para horários de "
