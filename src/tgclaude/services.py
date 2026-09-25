@@ -50,6 +50,9 @@ class RuntimeState:
     audit_picks: dict[int, list[tuple[str, str]]] = field(
         default_factory=dict
     )  # /audit: (alias, regra)
+    pending_skill: dict[tuple[int, int], str] = field(
+        default_factory=dict
+    )  # (chat, msg do ForceReply) → skill esperando argumento
 
 
 @dataclass

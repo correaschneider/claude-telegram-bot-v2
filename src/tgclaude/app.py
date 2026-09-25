@@ -40,7 +40,7 @@ def menu_commands(project_path: str | None) -> list[BotCommand]:
     entries = [e for e in discover(project_path) if e.scope == "global"]
     by_name = {e.name: e for e in entries}
     extra = [
-        BotCommand(command=tg, description=by_name[real].description[:256])
+        BotCommand(command=tg, description=by_name[real].menu_description)
         for tg, real in build_registry(entries, reserved=reserved).items()
     ]
     return (handlers.COMMANDS + extra)[:MAX_MENU_COMMANDS]

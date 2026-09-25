@@ -10,7 +10,7 @@ streaming da resposta. Pacote `tgclaude` em *src layout*. Docs de produto: `READ
 ```bash
 uv sync --group dev            # venv + pacote editável + ruff/pytest
 uv run ruff format . && uv run ruff check .
-uv run pytest                  # ~23 testes, sem token/rede/GPU (test_bridge sobe o mcp_bridge real)
+uv run pytest                  # ~36 testes, sem token/rede/GPU (test_bridge sobe o mcp_bridge real)
 uv run tgclaude                # rodar na mão (lê .env do cwd)
 systemctl --user restart claude-telegram-bot-v2   # produção nesta máquina
 journalctl --user -u claude-telegram-bot-v2 -f
