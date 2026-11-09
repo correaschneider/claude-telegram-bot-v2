@@ -7,6 +7,9 @@ segura o mesmo flock que o CLI usa, então não concorre com o whisperx-cli do O
 
 POST /transcribe  {"path": "/abs/audio.ogg", "language": "pt"}  → {"text": "...", "seconds": 0.4}
 GET  /health                                                     → {"loaded": bool, "model": ...}
+POST /unload                                                     → {"unloaded": bool}
+  Libera a VRAM na hora (espera a transcrição em andamento). Quem usa a GPU ao vivo (o copiloto de
+  call) chama ao bater OOM, e o pipeline do OBS chama depois de usar o servidor com um copiloto rodando.
 """
 
 from __future__ import annotations
@@ -56,18 +59,30 @@ class Engine:
                 self._load()
                 self._last_used = time.time()
 
+    def _unload(self, reason: str) -> bool:
+        """Descarrega o modelo (chamar com o _lock na mão). True se havia modelo carregado."""
+        if self._model is None:
+            return False
+        self._model = None
+        gc.collect()
+        try:
+            import torch
+
+            torch.cuda.empty_cache()
+        except Exception:  # noqa: BLE001
+            pass
+        log.info("modelo descarregado (%s)", reason)
+        return True
+
     def unload_if_idle(self) -> None:
         with self._lock:
             if self._model is not None and time.time() - self._last_used > IDLE_SECONDS:
-                self._model = None
-                gc.collect()
-                try:
-                    import torch
+                self._unload(f"ociosidade {IDLE_SECONDS}s")
 
-                    torch.cuda.empty_cache()
-                except Exception:  # noqa: BLE001
-                    pass
-                log.info("modelo descarregado por ociosidade (%ds)", IDLE_SECONDS)
+    def unload(self) -> bool:
+        """Libera a VRAM já (espera a transcrição em andamento, que segura o mesmo lock)."""
+        with self._lock:
+            return self._unload("pedido via /unload")
 
     def transcribe(self, path: str, language: str) -> tuple[str, list[dict]]:
         """(texto corrido, segments [{start, end, text}]) — mesmo formato do whisperx CLI."""
@@ -125,6 +140,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json(404, {"error": "not found"})
 
     def do_POST(self) -> None:
+        if self.path == "/unload":
+            self._json(200, {"unloaded": engine.unload()})
+            return
         if self.path != "/transcribe":
             self._json(404, {"error": "not found"})
             return
